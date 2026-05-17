@@ -11,10 +11,15 @@ const MyfxbookAPI = {
         const parts = [];
         for (const [k, v] of Object.entries(params)) {
             if (v === undefined || v === null) continue;
-            parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+            // session ไม่ต้อง encode เพราะมันถูก encode มาจาก API แล้ว
+            if (k === 'session') {
+                parts.push(`session=${v}`);
+            } else {
+                parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+            }
         }
         const url = `${this.BASE_URL}/${path}?${parts.join('&')}`;
-        console.log('[API] Request:', path, params);
+        console.log('[API] Request:', path);
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status} ${response.statusText}`);
