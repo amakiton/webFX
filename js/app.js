@@ -144,16 +144,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.login(email, password);
-            if (result.error === false) {
+            console.log('[LOGIN] Result:', result);
+            if (result.error === false && result.session) {
+                // สำเร็จ - แสดง dashboard ก่อน แล้วค่อยโหลด accounts
                 showDashboard();
-                loadAccounts();
+                await loadAccounts();
             } else {
-                // แสดง error message จาก API ตามจริง
-                console.log('Login response:', result);
+                // แสดง error จาก API
                 showError(result.message || 'Login failed. Please check your credentials.');
             }
         } catch (err) {
-            console.error('Login error:', err);
+            console.error('[LOGIN] Error:', err);
             showError('Cannot connect to Myfxbook: ' + (err.message || 'Unknown error'));
         } finally {
             submitBtn.disabled = false;
@@ -163,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleLogout() {
         try { await MyfxbookAPI.logout(); } catch(e) {}
+        MyfxbookAPI.clearSession();
         showLogin();
     }
 
@@ -171,21 +173,53 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoading(true);
         try {
             const result = await MyfxbookAPI.getMyAccounts();
-            if (result.error === false && result.accounts) {
+            console.log('[ACCOUNTS] Result:', result);
+
+            if (result.error === false && Array.isArray(result.accounts)) {
                 accounts = result.accounts;
-                populateAccountSelect(accounts);
-                if (accounts.length > 0) {
-                    accountSelect.value = accounts[0].id;
-                    handleAccountChange();
+
+                if (accounts.length === 0) {
+                    // ล็อกอินสำเร็จแต่ยังไม่ได้เพิ่มบัญชี Forex
+                    showNoAccounts();
+                    return;
                 }
-            } else if (result.message && result.message.toLowerCase().includes('session')) {
+
+                populateAccountSelect(accounts);
+                accountSelect.value = accounts[0].id;
+                await handleAccountChange();
+            } else {
+                // Error - กลับไป login พร้อมแสดง error
+                console.warn('[ACCOUNTS] Failed:', result);
+                MyfxbookAPI.clearSession();
                 showLogin();
+                showError('Session expired or invalid. Please login again. ' + (result.message || ''));
             }
         } catch (err) {
-            console.error('Load accounts error:', err);
+            console.error('[ACCOUNTS] Error:', err);
+            showLogin();
+            showError('Failed to load accounts: ' + (err.message || 'Unknown error'));
         } finally {
             showLoading(false);
         }
+    }
+
+    function showNoAccounts() {
+        mainContent.style.display = 'block';
+        const main = document.getElementById('main-content');
+        main.innerHTML = `
+            <div style="padding: 60px 20px; text-align: center;">
+                <i class="fas fa-info-circle" style="font-size: 48px; color: var(--accent); margin-bottom: 16px;"></i>
+                <h2 style="margin-bottom: 12px;">No Forex Accounts Linked</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">
+                    Login successful! But you haven't added any Forex trading accounts to Myfxbook yet.
+                </p>
+                <p style="color: var(--text-muted); font-size: 13px;">
+                    Please add an account at
+                    <a href="https://www.myfxbook.com/portfolio" target="_blank" style="color: var(--accent);">myfxbook.com/portfolio</a>
+                    then refresh this page.
+                </p>
+            </div>
+        `;
     }
 
     function populateAccountSelect(accs) {

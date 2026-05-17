@@ -7,18 +7,21 @@ const MyfxbookAPI = {
     BASE_URL: 'https://www.myfxbook.com/api',
     session: null,
 
-    async _get(path, params = {}) {
-        // ใช้ encodeURIComponent เพื่อให้รองรับตัวอักษรพิเศษทั้งหมด
-        const query = Object.entries(params)
-            .filter(([k, v]) => v !== undefined && v !== null && v !== '')
-            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-            .join('&');
-        const url = `${this.BASE_URL}/${path}?${query}`;
+    async _request(path, params = {}) {
+        const parts = [];
+        for (const [k, v] of Object.entries(params)) {
+            if (v === undefined || v === null) continue;
+            parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+        }
+        const url = `${this.BASE_URL}/${path}?${parts.join('&')}`;
+        console.log('[API] Request:', path, params);
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error(`HTTP ${response.status} ${response.statusText}`);
         }
-        return await response.json();
+        const data = await response.json();
+        console.log('[API] Response:', path, data);
+        return data;
     },
 
     /**
@@ -29,22 +32,20 @@ const MyfxbookAPI = {
         this.session = null;
         localStorage.removeItem('myfxbook_session');
 
-        const data = await this._get('login.json', { email, password });
+        const data = await this._request('login.json', { email, password });
         if (data.error === false && data.session) {
             this.session = data.session;
             localStorage.setItem('myfxbook_session', data.session);
             localStorage.setItem('myfxbook_email', email);
+            console.log('[API] Session saved:', data.session);
         }
         return data;
     },
 
-    /**
-     * Logout
-     */
     async logout() {
         if (!this.session) return;
         try {
-            await this._get('logout.json', { session: this.session });
+            await this._request('logout.json', { session: this.session });
         } finally {
             this.session = null;
             localStorage.removeItem('myfxbook_session');
@@ -52,55 +53,46 @@ const MyfxbookAPI = {
         }
     },
 
-    /** Get all linked accounts */
     async getMyAccounts() {
-        return await this._get('get-my-accounts.json', { session: this.session });
+        return await this._request('get-my-accounts.json', { session: this.session });
     },
 
-    /** Get watched accounts */
     async getWatchedAccounts() {
-        return await this._get('get-watched-accounts.json', { session: this.session });
+        return await this._request('get-watched-accounts.json', { session: this.session });
     },
 
-    /** Get open trades */
     async getOpenTrades(id) {
-        return await this._get('get-open-trades.json', { session: this.session, id });
+        return await this._request('get-open-trades.json', { session: this.session, id });
     },
 
-    /** Get pending orders */
     async getOpenOrders(id) {
-        return await this._get('get-open-orders.json', { session: this.session, id });
+        return await this._request('get-open-orders.json', { session: this.session, id });
     },
 
-    /** Get trade history (closed trades) */
     async getHistory(id) {
-        return await this._get('get-history.json', { session: this.session, id });
+        return await this._request('get-history.json', { session: this.session, id });
     },
 
-    /** Get daily gain (% per day in date range) */
     async getDailyGain(id, start, end) {
-        return await this._get('get-daily-gain.json', {
+        return await this._request('get-daily-gain.json', {
             session: this.session, id, start, end
         });
     },
 
-    /** Get gain for a date range */
     async getGain(id, start, end) {
-        return await this._get('get-gain.json', {
+        return await this._request('get-gain.json', {
             session: this.session, id, start, end
         });
     },
 
-    /** Get data daily (balance/equity/profit/pips per day) */
     async getDataDaily(id, start, end) {
-        return await this._get('get-data-daily.json', {
+        return await this._request('get-data-daily.json', {
             session: this.session, id, start, end
         });
     },
 
-    /** Get community outlook */
     async getCommunityOutlook() {
-        return await this._get('get-community-outlook.json', { session: this.session });
+        return await this._request('get-community-outlook.json', { session: this.session });
     },
 
     /** Restore session from localStorage */
@@ -111,6 +103,12 @@ const MyfxbookAPI = {
             return true;
         }
         return false;
+    },
+
+    /** Clear all session data */
+    clearSession() {
+        this.session = null;
+        localStorage.removeItem('myfxbook_session');
     },
 
     isLoggedIn() {
