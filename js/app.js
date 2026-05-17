@@ -151,16 +151,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadAllHistories() {
+        // Clear cache and reload fresh
+        historyCache = {};
         // Load sequentially to avoid Myfxbook rate limit
         for (const acc of accounts) {
             const id = String(acc.id);
             try {
                 const result = await MyfxbookAPI.getHistory(id);
-                console.log(`History for ${acc.name} (${id}): ${result.error === false ? (result.history ? result.history.length + ' trades' : 'no history key') : result.message}`);
-                if (result.error === false && result.history) {
-                    historyCache[id] = result.history;
+                console.log(`History for ${acc.name} (${id}):`, 
+                    result.error === false 
+                        ? (result.history ? result.history.length + ' trades' : 'no history array') 
+                        : ('ERROR: ' + result.message));
+                if (result.error === false) {
+                    // Myfxbook may return history as array or empty
+                    historyCache[id] = Array.isArray(result.history) ? result.history : [];
                 } else {
-                    historyCache[id] = [];
+                    // If error (possibly rate limit), retry once after delay
+                    console.log(`Retrying history for ${acc.name}...`);
+                    await new Promise(r => setTimeout(r, 1000));
+                    const retry = await MyfxbookAPI.getHistory(id);
+                    if (retry.error === false && Array.isArray(retry.history)) {
+                        historyCache[id] = retry.history;
+                    } else {
+                        historyCache[id] = [];
+                    }
                 }
             } catch (e) {
                 console.error(`Failed to load history for ${id}:`, e);
@@ -374,16 +388,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const key = String(accountId);
 
         try {
-            let history = historyCache[key];
-            if (!history || history.length === 0) {
-                const result = await MyfxbookAPI.getHistory(accountId);
-                console.log('get-history response:', result);
-                if (result.error === false && result.history) {
-                    history = result.history;
-                    historyCache[key] = history;
-                } else {
-                    history = [];
-                }
+            // Always fetch fresh from API for detail page
+            const result = await MyfxbookAPI.getHistory(accountId);
+            console.log('get-history response:', result);
+            let history = [];
+            if (result.error === false && result.history) {
+                history = result.history;
+                historyCache[key] = history;
             }
 
             if (history.length > 0) {
@@ -408,6 +419,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     </tr>
                     `;
                 }).join('');
+
+                // Update win rate display
+                const wrEl = document.getElementById('detail-winrate');
+                const wr = calcWinRate(accountId);
+                wrEl.textContent = wr === 'N/A' ? 'N/A' : wr + '%';
             } else {
                 tbody.innerHTML = emptyRow(11, 'ไม่มีประวัติการเทรด');
             }
