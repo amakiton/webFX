@@ -136,10 +136,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const id = String(acc.id);
             try {
                 const result = await MyfxbookAPI.getHistory(id);
+                console.log(`History for account ${id}:`, result);
                 if (result.error === false && result.history) {
                     historyCache[id] = result.history;
+                } else {
+                    historyCache[id] = [];
                 }
             } catch (e) {
+                console.error(`Failed to load history for ${id}:`, e);
                 historyCache[id] = [];
             }
         });
@@ -148,10 +152,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function calcWinRate(accountId) {
         const key = String(accountId);
-        const history = historyCache[key] || [];
-        if (history.length === 0) return null;
-        const wins = history.filter(t => parseFloat(t.profit) > 0).length;
-        return ((wins / history.length) * 100).toFixed(1);
+        // Check if history has been loaded (key exists in cache)
+        if (!(key in historyCache)) return 'loading';
+        const history = historyCache[key];
+        if (!history || history.length === 0) return 'N/A';
+        // Filter only closed trades (trades that have a closeTime)
+        const closedTrades = history.filter(t => t.closeTime);
+        if (closedTrades.length === 0) return 'N/A';
+        const wins = closedTrades.filter(t => parseFloat(t.profit) > 0).length;
+        return ((wins / closedTrades.length) * 100).toFixed(1);
     }
 
     function renderAccountCards() {
@@ -201,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="account-stat">
                             <span class="stat-label">Win Rate</span>
-                            <span class="stat-value">${winRate !== null ? winRate + '%' : 'กำลังคำนวณ...'}</span>
+                            <span class="stat-value">${winRate === 'loading' ? '<i class="fas fa-spinner fa-spin"></i>' : (winRate === 'N/A' ? 'N/A' : winRate + '%')}</span>
                         </div>
                     </div>
                     <div class="account-card-footer">
@@ -257,7 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ddEl.className = 'stat-value negative';
 
         const wrEl = document.getElementById('detail-winrate');
-        wrEl.textContent = winRate !== null ? winRate + '%' : 'N/A';
+        const wr = calcWinRate(acc.id);
+        wrEl.textContent = wr === 'loading' ? '...' : (wr === 'N/A' ? 'N/A' : wr + '%');
 
         document.getElementById('detail-trades').textContent = acc.trades || 0;
         document.getElementById('detail-deposits').textContent = formatCurrency(parseFloat(acc.deposits) || 0);
