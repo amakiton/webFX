@@ -6,6 +6,7 @@
     <title>WebFX - Myfxbook Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Login Section -->
@@ -118,7 +119,10 @@
         <!-- Tabs -->
         <div id="tabs-section" class="tabs-container" style="display: none;">
             <div class="tabs">
-                <button class="tab-btn active" data-tab="open-trades">
+                <button class="tab-btn active" data-tab="charts">
+                    <i class="fas fa-chart-area"></i> กราฟ
+                </button>
+                <button class="tab-btn" data-tab="open-trades">
                     <i class="fas fa-play-circle"></i> Open Trades
                 </button>
                 <button class="tab-btn" data-tab="history">
@@ -129,8 +133,26 @@
                 </button>
             </div>
 
+            <!-- Charts Tab -->
+            <div id="charts" class="tab-content active">
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-line"></i> Equity Curve (30 วัน)</h3>
+                        <canvas id="equityChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-bar"></i> กำไร/ขาดทุนรายวัน (30 วัน)</h3>
+                        <canvas id="dailyGainChart"></canvas>
+                    </div>
+                    <div class="chart-card chart-full">
+                        <h3><i class="fas fa-chart-area"></i> กำไรสะสม (%)</h3>
+                        <canvas id="cumulativeGainChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
             <!-- Open Trades Tab -->
-            <div id="open-trades" class="tab-content active">
+            <div id="open-trades" class="tab-content">
                 <div class="table-responsive">
                     <table class="data-table">
                         <thead>

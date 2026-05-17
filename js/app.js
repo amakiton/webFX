@@ -19,6 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let accounts = [];
     let selectedAccount = null;
+    let equityChart = null;
+    let dailyGainChart = null;
+    let cumulativeGainChart = null;
 
     // ========== Initialize ==========
     init();
@@ -139,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tabsSection.style.display = 'block';
 
             // Load tab data
+            loadCharts(accountId);
             loadOpenTrades(accountId);
             loadHistory(accountId);
             loadDailyGain(accountId);
@@ -296,6 +300,170 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = '<tr><td colspan="3" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
             console.error('Daily gain error:', error);
         }
+    }
+
+    // ========== Load Charts ==========
+    async function loadCharts(accountId) {
+        try {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(start.getDate() - 30);
+
+            const startStr = formatDateAPI(start);
+            const endStr = formatDateAPI(end);
+
+            const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
+
+            if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
+                const gains = result.dailyGain.slice(-30);
+                const labels = gains.map(d => d.date ? d.date.substring(5) : '');
+                const dailyValues = gains.map(d => parseFloat(d.value) || 0);
+
+                // Cumulative gain
+                let cumulative = 0;
+                const cumulativeValues = dailyValues.map(v => {
+                    cumulative += v;
+                    return parseFloat(cumulative.toFixed(4));
+                });
+
+                // Equity simulation (based on balance + cumulative %)
+                const balance = parseFloat(selectedAccount.balance) || 10000;
+                const equityValues = cumulativeValues.map(c => {
+                    return parseFloat((balance * (1 + c / 100)).toFixed(2));
+                });
+
+                renderEquityChart(labels, equityValues);
+                renderDailyGainChart(labels, dailyValues);
+                renderCumulativeGainChart(labels, cumulativeValues);
+            }
+        } catch (error) {
+            console.error('Chart load error:', error);
+        }
+    }
+
+    // ========== Render Charts ==========
+    function renderEquityChart(labels, data) {
+        const ctx = document.getElementById('equityChart').getContext('2d');
+        if (equityChart) equityChart.destroy();
+
+        equityChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Equity ($)',
+                    data: data,
+                    borderColor: '#1a73e8',
+                    backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `$${ctx.parsed.y.toLocaleString()}`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: (val) => '$' + val.toLocaleString()
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderDailyGainChart(labels, data) {
+        const ctx = document.getElementById('dailyGainChart').getContext('2d');
+        if (dailyGainChart) dailyGainChart.destroy();
+
+        const colors = data.map(v => v >= 0 ? '#0f9d58' : '#ea4335');
+
+        dailyGainChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Daily Gain (%)',
+                    data: data,
+                    backgroundColor: colors,
+                    borderRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(4)}%`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: (val) => val.toFixed(2) + '%'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderCumulativeGainChart(labels, data) {
+        const ctx = document.getElementById('cumulativeGainChart').getContext('2d');
+        if (cumulativeGainChart) cumulativeGainChart.destroy();
+
+        const lastValue = data[data.length - 1] || 0;
+        const lineColor = lastValue >= 0 ? '#0f9d58' : '#ea4335';
+        const bgColor = lastValue >= 0 ? 'rgba(15, 157, 88, 0.1)' : 'rgba(234, 67, 53, 0.1)';
+
+        cumulativeGainChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cumulative Gain (%)',
+                    data: data,
+                    borderColor: lineColor,
+                    backgroundColor: bgColor,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(4)}%`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: (val) => val.toFixed(2) + '%'
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // ========== Tab Switching ==========
