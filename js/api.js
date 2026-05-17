@@ -10,7 +10,8 @@ const MyfxbookAPI = {
     // ========== Authentication ==========
 
     async login(email, password) {
-        const url = `${this.BASE_URL}/login.json?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`;
+        // Do NOT encode password - Myfxbook API requires raw password in URL
+        const url = `${this.BASE_URL}/login.json?email=${encodeURIComponent(email)}&password=${password}`;
         const response = await fetch(url);
         const data = await response.json();
 
