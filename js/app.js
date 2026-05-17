@@ -13,15 +13,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== Initialize ==========
     init();
 
-    function init() {
+    async function init() {
+        bindEvents();
         if (MyfxbookAPI.restoreSession()) {
-            showPage('accounts');
-            loadAccounts();
-            loadCommunityOutlook();
+            // Validate session before showing dashboard
+            try {
+                const test = await MyfxbookAPI.getMyAccounts();
+                if (test.error === false) {
+                    showPage('accounts');
+                    accounts = test.accounts || [];
+                    const grid = document.getElementById('accounts-grid');
+                    grid.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> กำลังคำนวณ Win Rate...</div>';
+                    await loadAllHistories();
+                    renderAccountCards();
+                    loadCommunityOutlook();
+                } else {
+                    // Session expired
+                    console.log('Session expired, showing login');
+                    MyfxbookAPI.session = null;
+                    localStorage.removeItem('myfxbook_session');
+                    showPage('login');
+                }
+            } catch (e) {
+                console.error('Session validation failed:', e);
+                MyfxbookAPI.session = null;
+                localStorage.removeItem('myfxbook_session');
+                showPage('login');
+            }
         } else {
             showPage('login');
         }
-        bindEvents();
     }
 
     function bindEvents() {
