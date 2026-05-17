@@ -8,9 +8,16 @@ const MyfxbookAPI = {
     session: null,
 
     async _get(path, params = {}) {
-        const query = new URLSearchParams(params).toString();
+        // ใช้ encodeURIComponent เพื่อให้รองรับตัวอักษรพิเศษทั้งหมด
+        const query = Object.entries(params)
+            .filter(([k, v]) => v !== undefined && v !== null && v !== '')
+            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+            .join('&');
         const url = `${this.BASE_URL}/${path}?${query}`;
         const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         return await response.json();
     },
 
@@ -18,6 +25,10 @@ const MyfxbookAPI = {
      * Login
      */
     async login(email, password) {
+        // ล้าง session เก่าออกก่อน
+        this.session = null;
+        localStorage.removeItem('myfxbook_session');
+
         const data = await this._get('login.json', { email, password });
         if (data.error === false && data.session) {
             this.session = data.session;

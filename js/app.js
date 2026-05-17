@@ -148,10 +148,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 showDashboard();
                 loadAccounts();
             } else {
+                // แสดง error message จาก API ตามจริง
+                console.log('Login response:', result);
                 showError(result.message || 'Login failed. Please check your credentials.');
             }
         } catch (err) {
-            showError('Cannot connect to Myfxbook. Please try again.');
+            console.error('Login error:', err);
+            showError('Cannot connect to Myfxbook: ' + (err.message || 'Unknown error'));
         } finally {
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
