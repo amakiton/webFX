@@ -587,6 +587,149 @@ body {
 .positive { color: var(--positive) !important; }
 .negative { color: var(--negative) !important; }
 
+/* ============ ACCOUNTS GRID ============ */
+.accounts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+}
+
+.account-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.account-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 212, 170, 0.1);
+}
+
+.account-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+.account-card-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+.account-card-header .acc-broker {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.account-card-badge {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.account-card-badge.live {
+    background: rgba(0, 212, 170, 0.15);
+    color: var(--accent);
+}
+.account-card-badge.demo {
+    background: rgba(255, 170, 0, 0.15);
+    color: var(--warning);
+}
+
+.account-card-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+.account-card-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.account-card-stat .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.account-card-stat .value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.account-card-stat .value.positive { color: var(--positive); }
+.account-card-stat .value.negative { color: var(--negative); }
+
+.account-card-footer {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.account-card-footer .view-btn {
+    padding: 5px 12px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.account-card-footer .view-btn:hover {
+    background: #00b894;
+}
+
+/* ============ NAV VIEW BUTTONS ============ */
+.nav-view-btn {
+    padding: 8px 16px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.nav-view-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.nav-view-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+}
+.nav-view-btn i {
+    margin-right: 6px;
+}
+
+/* ============ ACCOUNT SELECTOR BAR ============ */
+.account-selector-bar {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.account-selector-bar label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
 /* ============ FOOTER ============ */
 .footer {
     padding: 20px;

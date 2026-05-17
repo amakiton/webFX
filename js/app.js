@@ -1,9 +1,8 @@
 /**
- * WebFX - Forex Analytics Dashboard
+ * WebFX - Forex Analytics Dashboard (No Charts)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // ========== Elements ==========
     const loginSection = document.getElementById('login-section');
     const dashboardSection = document.getElementById('dashboard-section');
     const loginForm = document.getElementById('login-form');
@@ -14,32 +13,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const accountSelect = document.getElementById('account-select');
     const loading = document.getElementById('loading');
     const mainContent = document.getElementById('main-content');
+    const allAccountsView = document.getElementById('all-accounts-view');
+    const accountDetailView = document.getElementById('account-detail-view');
 
-    // ========== State ==========
     let accounts = [];
     let selectedAccount = null;
     let allHistory = [];
     let allDailyGain = [];
     let allDailyData = [];
-    let dateStart = null;
-    let dateEnd = null;
-    let currentChartType = 'growth'; // growth | balance | equity
 
-    // Charts
-    let growthChart = null;
-    let dailyPLChart = null;
-    let drawdownChart = null;
-    let hourlyChart = null;
-    let weekdayChart = null;
-    let symbolChart = null;
-    let buySellChart = null;
-
-    // Chart.js dark theme
-    Chart.defaults.color = '#94a3b8';
-    Chart.defaults.borderColor = 'rgba(45,55,72,0.5)';
-    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-
-    // ========== Init ==========
     init();
 
     function init() {
@@ -48,33 +30,22 @@ document.addEventListener('DOMContentLoaded', () => {
             loadAccounts();
         }
 
-        // Default date range
-        setDatePreset(90);
-
-        // Events
         loginForm.addEventListener('submit', handleLogin);
         btnLogout.addEventListener('click', handleLogout);
         btnRefresh.addEventListener('click', handleRefresh);
         accountSelect.addEventListener('change', handleAccountChange);
 
-        // Date filter
-        document.getElementById('btn-apply-date').addEventListener('click', applyCustomDate);
-        document.querySelectorAll('.preset-btn').forEach(btn => {
+        // View switching
+        document.querySelectorAll('.nav-view-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                setDatePreset(parseInt(e.target.dataset.days));
-                reloadAllData();
-            });
-        });
-
-        // Chart toggle
-        document.querySelectorAll('.toggle-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                currentChartType = e.target.dataset.chart;
-                renderGrowthChart();
+                document.querySelectorAll('.nav-view-btn').forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                const view = e.currentTarget.dataset.view;
+                if (view === 'all-accounts') {
+                    showAllAccountsView();
+                } else {
+                    showAccountDetailView();
+                }
             });
         });
 
@@ -93,42 +64,24 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('history-filter').addEventListener('change', filterHistory);
     }
 
-    function setDatePreset(days) {
-        const end = new Date();
-        const start = new Date();
-        if (days > 0) {
-            start.setDate(start.getDate() - days);
-        } else {
-            start.setFullYear(start.getFullYear() - 5);
-        }
-        dateStart = start;
-        dateEnd = end;
-        document.getElementById('date-start').value = formatDateAPI(start);
-        document.getElementById('date-end').value = formatDateAPI(end);
-        updateDateInfo(days);
+    // ========== Views ==========
+    function showAllAccountsView() {
+        allAccountsView.style.display = 'block';
+        accountDetailView.style.display = 'none';
+        renderAccountsGrid();
     }
 
-    function applyCustomDate() {
-        const s = document.getElementById('date-start').value;
-        const e = document.getElementById('date-end').value;
-        if (s && e) {
-            dateStart = new Date(s);
-            dateEnd = new Date(e);
-            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-            updateDateInfo(-1);
-            reloadAllData();
-        }
+    function showAccountDetailView() {
+        allAccountsView.style.display = 'none';
+        accountDetailView.style.display = 'block';
     }
 
-    function updateDateInfo(days) {
-        const txt = document.getElementById('date-info-text');
-        const startStr = dateStart.toLocaleDateString('en-GB');
-        const endStr = dateEnd.toLocaleDateString('en-GB');
-        let label = `Showing data from ${startStr} to ${endStr}`;
-        if (days > 0) label += ` (Last ${days} days)`;
-        else if (days === 0) label += ` (All time)`;
-        else label += ` (Custom)`;
-        txt.textContent = label;
+    function openAccountDetail(accId) {
+        document.querySelectorAll('.nav-view-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-view-detail').classList.add('active');
+        showAccountDetailView();
+        accountSelect.value = accId;
+        handleAccountChange();
     }
 
     // ========== Login / Logout ==========
@@ -146,12 +99,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await MyfxbookAPI.login(email, password);
             console.log('[LOGIN] Result:', result);
             if (result.error === false && result.session) {
-                // สำเร็จ - แสดง dashboard ก่อน แล้วค่อยโหลด accounts
                 showDashboard();
                 await loadAccounts();
             } else {
-                // แสดง error จาก API
-                showError(result.message || 'Login failed. Please check your credentials.');
+                showError(result.message || 'Login failed.');
             }
         } catch (err) {
             console.error('[LOGIN] Error:', err);
@@ -179,47 +130,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 accounts = result.accounts;
 
                 if (accounts.length === 0) {
-                    // ล็อกอินสำเร็จแต่ยังไม่ได้เพิ่มบัญชี Forex
-                    showNoAccounts();
+                    allAccountsView.style.display = 'block';
+                    document.getElementById('accounts-grid').innerHTML = `
+                        <div style="grid-column: 1/-1; text-align:center; padding:60px 20px;">
+                            <i class="fas fa-info-circle" style="font-size:40px; color:var(--accent); margin-bottom:14px;"></i>
+                            <h3>No Forex Accounts Linked</h3>
+                            <p style="color:var(--text-secondary); margin-top:8px;">Add accounts at <a href="https://www.myfxbook.com/portfolio" target="_blank" style="color:var(--accent);">myfxbook.com</a></p>
+                        </div>
+                    `;
                     return;
                 }
 
                 populateAccountSelect(accounts);
-                accountSelect.value = accounts[0].id;
-                await handleAccountChange();
+                document.getElementById('accounts-count').textContent = `${accounts.length} account${accounts.length > 1 ? 's' : ''}`;
+                showAllAccountsView();
             } else {
-                // Error - กลับไป login พร้อมแสดง error
                 console.warn('[ACCOUNTS] Failed:', result);
                 MyfxbookAPI.clearSession();
                 showLogin();
-                showError('Session expired or invalid. Please login again. ' + (result.message || ''));
+                showError('Session expired. Please login again. ' + (result.message || ''));
             }
         } catch (err) {
             console.error('[ACCOUNTS] Error:', err);
             showLogin();
-            showError('Failed to load accounts: ' + (err.message || 'Unknown error'));
+            showError('Failed to load accounts: ' + (err.message || ''));
         } finally {
             showLoading(false);
         }
-    }
-
-    function showNoAccounts() {
-        mainContent.style.display = 'block';
-        const main = document.getElementById('main-content');
-        main.innerHTML = `
-            <div style="padding: 60px 20px; text-align: center;">
-                <i class="fas fa-info-circle" style="font-size: 48px; color: var(--accent); margin-bottom: 16px;"></i>
-                <h2 style="margin-bottom: 12px;">No Forex Accounts Linked</h2>
-                <p style="color: var(--text-secondary); margin-bottom: 24px;">
-                    Login successful! But you haven't added any Forex trading accounts to Myfxbook yet.
-                </p>
-                <p style="color: var(--text-muted); font-size: 13px;">
-                    Please add an account at
-                    <a href="https://www.myfxbook.com/portfolio" target="_blank" style="color: var(--accent);">myfxbook.com/portfolio</a>
-                    then refresh this page.
-                </p>
-            </div>
-        `;
     }
 
     function populateAccountSelect(accs) {
@@ -232,6 +169,86 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ========== Accounts Grid ==========
+    function renderAccountsGrid() {
+        const grid = document.getElementById('accounts-grid');
+        if (accounts.length === 0) return;
+
+        grid.innerHTML = accounts.map(acc => {
+            const gain = num(acc.gain);
+            const profit = num(acc.profit);
+            const balance = num(acc.balance);
+            const equity = num(acc.equity);
+            const drawdown = num(acc.drawdown);
+            const trades = num(acc.trades);
+            const pips = num(acc.pips);
+            const won = num(acc.wonTrades);
+            const lost = num(acc.lostTrades);
+            const total = won + lost;
+            const winRate = total > 0 ? ((won / total) * 100).toFixed(1) : '0.0';
+
+            return `
+                <div class="account-card" data-id="${acc.id}">
+                    <div class="account-card-header">
+                        <div>
+                            <h3>${acc.name || 'Unnamed'}</h3>
+                            <span class="acc-broker">${acc.broker || '-'} / ${acc.server || '-'}</span>
+                        </div>
+                        <span class="account-card-badge ${acc.demo ? 'demo' : 'live'}">${acc.demo ? 'Demo' : 'Live'}</span>
+                    </div>
+                    <div class="account-card-stats">
+                        <div class="account-card-stat">
+                            <span class="label">Balance</span>
+                            <span class="value">${fmtMoney(balance)}</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Equity</span>
+                            <span class="value">${fmtMoney(equity)}</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Gain</span>
+                            <span class="value ${gain >= 0 ? 'positive' : 'negative'}">${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Profit</span>
+                            <span class="value ${profit >= 0 ? 'positive' : 'negative'}">${fmtMoney(profit)}</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Drawdown</span>
+                            <span class="value negative">${drawdown.toFixed(2)}%</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Win Rate</span>
+                            <span class="value">${winRate}%</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Trades</span>
+                            <span class="value">${trades}</span>
+                        </div>
+                        <div class="account-card-stat">
+                            <span class="label">Pips</span>
+                            <span class="value ${pips >= 0 ? 'positive' : 'negative'}">${pips.toFixed(1)}</span>
+                        </div>
+                    </div>
+                    <div class="account-card-footer">
+                        <span>${acc.currency || 'USD'} | Leverage 1:${acc.leverage || '-'}</span>
+                        <button class="view-btn" onclick="event.stopPropagation()">View Detail</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Click handlers
+        grid.querySelectorAll('.account-card').forEach(card => {
+            card.addEventListener('click', () => openAccountDetail(card.dataset.id));
+            card.querySelector('.view-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                openAccountDetail(card.dataset.id);
+            });
+        });
+    }
+
+    // ========== Account Detail ==========
     async function handleAccountChange() {
         const accountId = accountSelect.value;
         if (!accountId) {
@@ -261,11 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadOpenOrders(id)
         ]);
 
-        renderGrowthChart();
-        renderDailyPLChart();
-        renderDrawdownChart();
         renderMonthlyTable();
-        renderTradingActivity();
         renderDailyGainTable();
     }
 
@@ -286,22 +299,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('info-leverage').textContent = acc.leverage ? `1:${acc.leverage}` : '-';
         document.getElementById('info-currency').textContent = acc.currency || 'USD';
         document.getElementById('info-since').textContent = acc.creationDate ? acc.creationDate.substring(0, 10) : '-';
-        document.getElementById('info-update').textContent = acc.lastUpdateDate ? formatRelativeTime(acc.lastUpdateDate) : '-';
+        document.getElementById('info-update').textContent = acc.lastUpdateDate ? fmtRelTime(acc.lastUpdateDate) : '-';
         userEmail.textContent = localStorage.getItem('myfxbook_email') || '';
     }
 
-    function formatRelativeTime(dateStr) {
-        try {
-            const d = new Date(dateStr);
-            const diff = (new Date() - d) / 1000;
-            if (diff < 60) return 'Just now';
-            if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-            if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-            return `${Math.floor(diff/86400)}d ago`;
-        } catch { return dateStr; }
-    }
-
-    // ========== Key Stats ==========
     function displayKeyStats(acc) {
         const gain = num(acc.gain);
         const profit = num(acc.profit);
@@ -325,20 +326,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setStat('stat-winrate', `${winRate.toFixed(1)}%`, winRate >= 50 ? 1 : -1);
     }
 
-    function setStat(id, text, color) {
-        const el = document.getElementById(id);
-        el.textContent = text;
-        el.className = 'stat-value';
-        if (color !== undefined) el.classList.add(color >= 0 ? 'positive' : 'negative');
-    }
-
-    // ========== Advanced Stats ==========
     function displayAdvancedStats(acc) {
-        const won = num(acc.wonTrades);
-        const lost = num(acc.lostTrades);
-        const total = won + lost;
+        const won = num(acc.wonTrades), lost = num(acc.lostTrades), total = won + lost;
         const winRate = total > 0 ? ((won/total)*100).toFixed(1) : '0.0';
-
         setText('adv-winrate', `${winRate}%`);
         setText('adv-pf', acc.profitFactor || '-');
         setText('adv-expectancy', acc.expectancy ? `${num(acc.expectancy).toFixed(2)} pips` : '-');
@@ -346,7 +336,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setText('adv-avgloss', acc.avgLoss ? fmtMoney(num(acc.avgLoss)) : '-');
         setText('adv-avgpipswin', acc.avgPipsWin ? num(acc.avgPipsWin).toFixed(1) : '-');
         setText('adv-avgpipsloss', acc.avgPipsLoss ? num(acc.avgPipsLoss).toFixed(1) : '-');
-
         setText('adv-total', total || acc.trades || '-');
         setText('adv-won', won || '-');
         setText('adv-lost', lost || '-');
@@ -354,7 +343,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setText('adv-worst', acc.worstTrade ? fmtMoney(num(acc.worstTrade)) : '-');
         setText('adv-bestpips', acc.bestTradePips ? num(acc.bestTradePips).toFixed(1) : '-');
         setText('adv-worstpips', acc.worstTradePips ? num(acc.worstTradePips).toFixed(1) : '-');
-
         setText('adv-dd', acc.drawdown ? `${num(acc.drawdown).toFixed(2)}%` : '-');
         setText('adv-tradelen', acc.avgTradeLength || '-');
         setText('adv-longs', acc.longsWon ? `${acc.longsWon}%` : '-');
@@ -362,7 +350,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setText('adv-daily', acc.daily ? `${num(acc.daily).toFixed(2)}%` : '-');
         setText('adv-monthly', acc.monthly ? `${num(acc.monthly).toFixed(2)}%` : '-');
         setText('adv-absgain', acc.absGain ? `${num(acc.absGain).toFixed(2)}%` : '-');
-
         setText('adv-deposits', acc.deposits ? fmtMoney(num(acc.deposits)) : '-');
         setText('adv-withdrawals', acc.withdrawals ? fmtMoney(num(acc.withdrawals)) : '-');
         setText('adv-interest', acc.interest ? fmtMoney(num(acc.interest)) : '-');
@@ -375,14 +362,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== Load Data ==========
     async function loadDailyGain(id) {
         try {
-            const r = await MyfxbookAPI.getDailyGain(id, formatDateAPI(dateStart), formatDateAPI(dateEnd));
+            const end = new Date(), start = new Date();
+            start.setDate(start.getDate() - 90);
+            const r = await MyfxbookAPI.getDailyGain(id, formatDateAPI(start), formatDateAPI(end));
             allDailyGain = (r.error === false && r.dailyGain) ? r.dailyGain : [];
         } catch (e) { allDailyGain = []; }
     }
 
     async function loadDailyData(id) {
         try {
-            const r = await MyfxbookAPI.getDataDaily(id, formatDateAPI(dateStart), formatDateAPI(dateEnd));
+            const end = new Date(), start = new Date();
+            start.setDate(start.getDate() - 90);
+            const r = await MyfxbookAPI.getDataDaily(id, formatDateAPI(start), formatDateAPI(end));
             allDailyData = (r.error === false && r.dataDaily) ? r.dataDaily : [];
         } catch (e) { allDailyData = []; }
     }
@@ -395,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderHistory(allHistory);
         } catch (e) {
             allHistory = [];
-            document.getElementById('history-body').innerHTML = '<tr><td colspan="11" class="empty">Error loading data</td></tr>';
+            document.getElementById('history-body').innerHTML = '<tr><td colspan="11" class="empty">Error loading</td></tr>';
         }
     }
 
@@ -406,27 +397,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = await MyfxbookAPI.getOpenTrades(id);
             const trades = (r.error === false && r.openTrades) ? r.openTrades : [];
             document.getElementById('cnt-open').textContent = trades.length;
-            if (trades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" class="empty">No open trades</td></tr>';
-                return;
-            }
-            tbody.innerHTML = trades.map(t => `
-                <tr>
-                    <td><strong>${t.symbol || '-'}</strong></td>
-                    <td><span class="${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
-                    <td>${getLots(t)}</td>
-                    <td>${t.openPrice || '-'}</td>
-                    <td>${t.currentPrice || '-'}</td>
-                    <td>${t.stopLoss || '-'}</td>
-                    <td>${t.takeProfit || '-'}</td>
-                    <td class="${num(t.profit) >= 0 ? 'positive' : 'negative'}">${fmtMoney(num(t.profit))}</td>
-                    <td class="${num(t.pips) >= 0 ? 'positive' : 'negative'}">${num(t.pips).toFixed(1)}</td>
-                    <td>${fmtDateTime(t.openTime)}</td>
-                </tr>
-            `).join('');
-        } catch (e) {
-            tbody.innerHTML = '<tr><td colspan="10" class="empty">Error loading data</td></tr>';
-        }
+            if (trades.length === 0) { tbody.innerHTML = '<tr><td colspan="10" class="empty">No open trades</td></tr>'; return; }
+            tbody.innerHTML = trades.map(t => `<tr>
+                <td><strong>${t.symbol||'-'}</strong></td>
+                <td><span class="${t.action==='Buy'?'badge-buy':'badge-sell'}">${t.action||'-'}</span></td>
+                <td>${getLots(t)}</td><td>${t.openPrice||'-'}</td><td>${t.currentPrice||'-'}</td>
+                <td>${t.stopLoss||'-'}</td><td>${t.takeProfit||'-'}</td>
+                <td class="${num(t.profit)>=0?'positive':'negative'}">${fmtMoney(num(t.profit))}</td>
+                <td class="${num(t.pips)>=0?'positive':'negative'}">${num(t.pips).toFixed(1)}</td>
+                <td>${fmtDateTime(t.openTime)}</td></tr>`).join('');
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="10" class="empty">Error</td></tr>'; }
     }
 
     async function loadOpenOrders(id) {
@@ -436,492 +416,113 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = await MyfxbookAPI.getOpenOrders(id);
             const orders = (r.error === false && r.openOrders) ? r.openOrders : [];
             document.getElementById('cnt-orders').textContent = orders.length;
-            if (orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty">No pending orders</td></tr>';
-                return;
-            }
-            tbody.innerHTML = orders.map(t => `
-                <tr>
-                    <td><strong>${t.symbol || '-'}</strong></td>
-                    <td><span class="${(t.action || '').toLowerCase().includes('buy') ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
-                    <td>${getLots(t)}</td>
-                    <td>${t.openPrice || '-'}</td>
-                    <td>${t.stopLoss || '-'}</td>
-                    <td>${t.takeProfit || '-'}</td>
-                    <td>${fmtDateTime(t.openTime)}</td>
-                </tr>
-            `).join('');
-        } catch (e) {
-            tbody.innerHTML = '<tr><td colspan="7" class="empty">Error loading data</td></tr>';
-        }
+            if (orders.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No pending orders</td></tr>'; return; }
+            tbody.innerHTML = orders.map(t => `<tr>
+                <td><strong>${t.symbol||'-'}</strong></td>
+                <td><span class="${(t.action||'').toLowerCase().includes('buy')?'badge-buy':'badge-sell'}">${t.action||'-'}</span></td>
+                <td>${getLots(t)}</td><td>${t.openPrice||'-'}</td>
+                <td>${t.stopLoss||'-'}</td><td>${t.takeProfit||'-'}</td>
+                <td>${fmtDateTime(t.openTime)}</td></tr>`).join('');
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Error</td></tr>'; }
     }
 
-    // ========== History Filtering ==========
+    // ========== History ==========
     function renderHistory(data) {
         const tbody = document.getElementById('history-body');
-        if (data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" class="empty">No history</td></tr>';
-            return;
-        }
-        // Filter by date range, then sort by close time desc
-        const filtered = data.filter(t => {
-            if (!t.closeTime) return true;
-            try {
-                const ct = new Date(t.closeTime);
-                return ct >= dateStart && ct <= dateEnd;
-            } catch { return true; }
-        });
-
-        const sorted = [...filtered].sort((a, b) => {
-            const ta = new Date(a.closeTime || 0).getTime();
-            const tb = new Date(b.closeTime || 0).getTime();
-            return tb - ta;
-        }).slice(0, 200);
-
-        if (sorted.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" class="empty">No trades in selected range</td></tr>';
-            return;
-        }
-
+        if (data.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="empty">No history</td></tr>'; return; }
+        const sorted = [...data].sort((a,b) => new Date(b.closeTime||0) - new Date(a.closeTime||0)).slice(0, 200);
         tbody.innerHTML = sorted.map(t => `
-            <tr data-symbol="${(t.symbol || '').toLowerCase()}" data-action="${(t.action || '').toLowerCase()}" data-profit="${num(t.profit)}">
-                <td><strong>${t.symbol || '-'}</strong></td>
-                <td><span class="${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
-                <td>${getLots(t)}</td>
-                <td>${t.openPrice || '-'}</td>
-                <td>${t.closePrice || '-'}</td>
-                <td>${t.stopLoss || '-'}</td>
-                <td>${t.takeProfit || '-'}</td>
-                <td class="${num(t.profit) >= 0 ? 'positive' : 'negative'}">${fmtMoney(num(t.profit))}</td>
-                <td class="${num(t.pips) >= 0 ? 'positive' : 'negative'}">${num(t.pips).toFixed(1)}</td>
-                <td>${fmtDateTime(t.openTime)}</td>
-                <td>${fmtDateTime(t.closeTime)}</td>
-            </tr>
-        `).join('');
+            <tr data-symbol="${(t.symbol||'').toLowerCase()}" data-action="${(t.action||'').toLowerCase()}" data-profit="${num(t.profit)}">
+                <td><strong>${t.symbol||'-'}</strong></td>
+                <td><span class="${t.action==='Buy'?'badge-buy':'badge-sell'}">${t.action||'-'}</span></td>
+                <td>${getLots(t)}</td><td>${t.openPrice||'-'}</td><td>${t.closePrice||'-'}</td>
+                <td>${t.stopLoss||'-'}</td><td>${t.takeProfit||'-'}</td>
+                <td class="${num(t.profit)>=0?'positive':'negative'}">${fmtMoney(num(t.profit))}</td>
+                <td class="${num(t.pips)>=0?'positive':'negative'}">${num(t.pips).toFixed(1)}</td>
+                <td>${fmtDateTime(t.openTime)}</td><td>${fmtDateTime(t.closeTime)}</td>
+            </tr>`).join('');
     }
 
     function filterHistory() {
         const search = document.getElementById('history-search').value.toLowerCase();
         const filter = document.getElementById('history-filter').value;
         document.querySelectorAll('#history-body tr').forEach(tr => {
-            const symbol = tr.dataset.symbol || '';
-            const action = tr.dataset.action || '';
-            const profit = parseFloat(tr.dataset.profit) || 0;
-
+            const sym = tr.dataset.symbol || '', act = tr.dataset.action || '', pft = parseFloat(tr.dataset.profit) || 0;
             let show = true;
-            if (search && !symbol.includes(search)) show = false;
-            if (filter === 'buy' && action !== 'buy') show = false;
-            if (filter === 'sell' && action !== 'sell') show = false;
-            if (filter === 'profit' && profit <= 0) show = false;
-            if (filter === 'loss' && profit >= 0) show = false;
-
+            if (search && !sym.includes(search)) show = false;
+            if (filter === 'buy' && act !== 'buy') show = false;
+            if (filter === 'sell' && act !== 'sell') show = false;
+            if (filter === 'profit' && pft <= 0) show = false;
+            if (filter === 'loss' && pft >= 0) show = false;
             tr.style.display = show ? '' : 'none';
-        });
-    }
-
-    // ========== Growth Chart ==========
-    function renderGrowthChart() {
-        const ctx = document.getElementById('growthChart').getContext('2d');
-        if (growthChart) growthChart.destroy();
-
-        let labels = [], data = [];
-        let label = 'Growth %';
-        let isPercent = true;
-
-        if (currentChartType === 'growth') {
-            const sorted = [...allDailyGain].sort((a,b) => new Date(a.date) - new Date(b.date));
-            labels = sorted.map(d => fmtShortDate(d.date));
-            let cum = 0;
-            data = sorted.map(d => { cum += num(d.value); return parseFloat(cum.toFixed(4)); });
-            label = 'Growth %';
-            isPercent = true;
-        } else if (currentChartType === 'balance' || currentChartType === 'equity') {
-            const sorted = [...allDailyData].sort((a,b) => new Date(a.date) - new Date(b.date));
-            labels = sorted.map(d => fmtShortDate(d.date));
-            data = sorted.map(d => {
-                if (currentChartType === 'balance') return num(d.balance);
-                return num(d.equity || d.balance);
-            });
-            label = currentChartType === 'balance' ? 'Balance' : 'Equity';
-            isPercent = false;
-        }
-
-        const lastVal = data[data.length - 1] || 0;
-        const color = lastVal >= 0 || !isPercent ? '#00d4aa' : '#ff4d6d';
-        const bgColor = lastVal >= 0 || !isPercent ? 'rgba(0,212,170,0.1)' : 'rgba(255,77,109,0.1)';
-
-        growthChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [{
-                    label, data,
-                    borderColor: color,
-                    backgroundColor: bgColor,
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.2,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointHoverBackgroundColor: color,
-                    pointHoverBorderColor: '#fff'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1a2335',
-                        borderColor: '#243349',
-                        borderWidth: 1,
-                        padding: 10,
-                        callbacks: {
-                            label: (ctx) => isPercent
-                                ? `${label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`
-                                : `${label}: $${ctx.parsed.y.toLocaleString()}`
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { maxTicksLimit: 12, font: { size: 11 } } },
-                    y: { grid: { color: 'rgba(45,55,72,0.3)' },
-                        ticks: { font: { size: 11 }, callback: v => isPercent ? v.toFixed(1) + '%' : '$' + v.toLocaleString() }
-                    }
-                },
-                interaction: { intersect: false, mode: 'index' }
-            }
-        });
-    }
-
-    // ========== Daily P/L Chart ==========
-    function renderDailyPLChart() {
-        const ctx = document.getElementById('dailyPLChart').getContext('2d');
-        if (dailyPLChart) dailyPLChart.destroy();
-
-        const sorted = [...allDailyGain].sort((a,b) => new Date(a.date) - new Date(b.date));
-        const labels = sorted.map(d => fmtShortDate(d.date));
-        const data = sorted.map(d => num(d.value));
-        const colors = data.map(v => v >= 0 ? 'rgba(0,212,170,0.7)' : 'rgba(255,77,109,0.7)');
-
-        dailyPLChart = new Chart(ctx, {
-            type: 'bar',
-            data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 2 }] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1a2335',
-                        callbacks: {
-                            label: ctx => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(4)}%`
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { font: { size: 10 }, callback: v => v.toFixed(1) + '%' } }
-                }
-            }
-        });
-    }
-
-    // ========== Drawdown Chart ==========
-    function renderDrawdownChart() {
-        const ctx = document.getElementById('drawdownChart').getContext('2d');
-        if (drawdownChart) drawdownChart.destroy();
-
-        const sorted = [...allDailyGain].sort((a,b) => new Date(a.date) - new Date(b.date));
-        const labels = sorted.map(d => fmtShortDate(d.date));
-
-        // Calculate running drawdown
-        let cum = 0, peak = 0;
-        const data = sorted.map(d => {
-            cum += num(d.value);
-            peak = Math.max(peak, cum);
-            return parseFloat((peak - cum).toFixed(4));
-        }).map(v => -v); // negative for visual
-
-        drawdownChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [{
-                    data,
-                    borderColor: '#ff4d6d',
-                    backgroundColor: 'rgba(255,77,109,0.15)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.2,
-                    pointRadius: 0,
-                    pointHoverRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1a2335',
-                        callbacks: {
-                            label: ctx => `Drawdown: ${Math.abs(ctx.parsed.y).toFixed(2)}%`
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { font: { size: 10 }, callback: v => Math.abs(v).toFixed(1) + '%' } }
-                }
-            }
         });
     }
 
     // ========== Monthly Table ==========
     function renderMonthlyTable() {
         const tbody = document.getElementById('monthly-body');
-        if (allDailyGain.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="14" class="empty">No data</td></tr>';
-            return;
-        }
-
+        if (allDailyGain.length === 0) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No data</td></tr>'; return; }
         const monthly = {};
         allDailyGain.forEach(d => {
             if (!d.date) return;
-            const parts = d.date.split('-');
-            if (parts.length < 3) return;
-            const y = parts[0], m = parseInt(parts[1]) - 1;
+            const p = d.date.split('-');
+            if (p.length < 3) return;
+            const y = p[0], m = parseInt(p[1]) - 1;
             if (!monthly[y]) monthly[y] = new Array(12).fill(0);
             monthly[y][m] += num(d.value);
         });
-
         const years = Object.keys(monthly).sort().reverse();
-        if (years.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="14" class="empty">No data in range</td></tr>';
-            return;
-        }
-
+        if (years.length === 0) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No data</td></tr>'; return; }
         tbody.innerHTML = years.map(year => {
             const months = monthly[year];
             const total = months.reduce((s,v) => s+v, 0);
             const cells = months.map(v => {
                 const cls = v > 0.001 ? 'positive' : v < -0.001 ? 'negative' : '';
-                const display = (v > 0.001 || v < -0.001) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '-';
-                return `<td class="${cls}">${display}</td>`;
+                const disp = (v > 0.001 || v < -0.001) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '-';
+                return `<td class="${cls}">${disp}</td>`;
             }).join('');
-            const totalCls = total > 0 ? 'positive total-cell' : total < 0 ? 'negative total-cell' : 'total-cell';
-            return `<tr><td class="year-cell">${year}</td>${cells}<td class="${totalCls}">${total >= 0 ? '+' : ''}${total.toFixed(2)}%</td></tr>`;
+            const tCls = total > 0 ? 'positive total-cell' : total < 0 ? 'negative total-cell' : 'total-cell';
+            return `<tr><td class="year-cell">${year}</td>${cells}<td class="${tCls}">${total >= 0 ? '+' : ''}${total.toFixed(2)}%</td></tr>`;
         }).join('');
-    }
-
-    // ========== Trading Activity ==========
-    function renderTradingActivity() {
-        // Filter history by date range
-        const filtered = allHistory.filter(t => {
-            if (!t.closeTime) return false;
-            try {
-                const ct = new Date(t.closeTime);
-                return ct >= dateStart && ct <= dateEnd;
-            } catch { return false; }
-        });
-
-        renderHourly(filtered);
-        renderWeekday(filtered);
-        renderSymbolDist(filtered);
-        renderBuySell(filtered);
-    }
-
-    function renderHourly(trades) {
-        const ctx = document.getElementById('hourlyChart').getContext('2d');
-        if (hourlyChart) hourlyChart.destroy();
-        const data = new Array(24).fill(0);
-        trades.forEach(t => {
-            try {
-                const d = new Date(t.openTime);
-                if (!isNaN(d)) data[d.getHours()]++;
-            } catch {}
-        });
-        const labels = Array.from({length:24}, (_,i) => `${i}h`);
-        hourlyChart = new Chart(ctx, {
-            type: 'bar',
-            data: { labels, datasets: [{ data, backgroundColor: 'rgba(0,212,170,0.6)', borderRadius: 2 }] },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 12 } },
-                    y: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { font: { size: 10 } } }
-                }
-            }
-        });
-    }
-
-    function renderWeekday(trades) {
-        const ctx = document.getElementById('weekdayChart').getContext('2d');
-        if (weekdayChart) weekdayChart.destroy();
-        const data = new Array(7).fill(0);
-        trades.forEach(t => {
-            try {
-                const d = new Date(t.openTime);
-                if (!isNaN(d)) data[d.getDay()]++;
-            } catch {}
-        });
-        weekdayChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
-                datasets: [{ data, backgroundColor: 'rgba(77,126,255,0.6)', borderRadius: 3 }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-                    y: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { font: { size: 10 } } }
-                }
-            }
-        });
-    }
-
-    function renderSymbolDist(trades) {
-        const ctx = document.getElementById('symbolChart').getContext('2d');
-        if (symbolChart) symbolChart.destroy();
-        const counts = {};
-        trades.forEach(t => {
-            const s = t.symbol || 'Unknown';
-            counts[s] = (counts[s] || 0) + 1;
-        });
-        const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 8);
-        const colors = ['#00d4aa','#4d7eff','#a855f7','#14b8a6','#ff4d6d','#ffaa00','#eab308','#ec4899'];
-        symbolChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: sorted.map(s => s[0]),
-                datasets: [{
-                    data: sorted.map(s => s[1]),
-                    backgroundColor: colors,
-                    borderColor: '#1a2335',
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } }
-                }
-            }
-        });
-    }
-
-    function renderBuySell(trades) {
-        const ctx = document.getElementById('buySellChart').getContext('2d');
-        if (buySellChart) buySellChart.destroy();
-        let buy = 0, sell = 0, buyProfit = 0, sellProfit = 0;
-        trades.forEach(t => {
-            const p = num(t.profit);
-            if (t.action === 'Buy') { buy++; buyProfit += p; }
-            else { sell++; sellProfit += p; }
-        });
-        buySellChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Buy', 'Sell'],
-                datasets: [
-                    { label: 'Trades', data: [buy, sell], backgroundColor: ['rgba(0,212,170,0.6)','rgba(255,77,109,0.6)'], borderRadius: 4, yAxisID: 'y' },
-                    { label: 'P/L ($)', data: [buyProfit, sellProfit], backgroundColor: ['rgba(0,212,170,0.3)','rgba(255,77,109,0.3)'], borderRadius: 4, yAxisID: 'y1' }
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
-                scales: {
-                    x: { grid: { display: false } },
-                    y: { position: 'left', title: { display: true, text: 'Trades', font: { size: 10 } }, grid: { color: 'rgba(45,55,72,0.3)' } },
-                    y1: { position: 'right', title: { display: true, text: 'P/L', font: { size: 10 } }, grid: { display: false } }
-                }
-            }
-        });
     }
 
     // ========== Daily Gain Table ==========
     function renderDailyGainTable() {
         const tbody = document.getElementById('daily-gain-body');
-        if (allDailyGain.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty">No daily data</td></tr>';
-            return;
-        }
+        if (allDailyGain.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No data</td></tr>'; return; }
         const sorted = [...allDailyGain].sort((a,b) => new Date(a.date) - new Date(b.date));
         let cum = 0;
-        const withCum = sorted.map(d => {
-            const v = num(d.value);
-            cum += v;
-            return { ...d, dailyVal: v, cumVal: cum };
-        });
-
-        // Map data daily by date
+        const withCum = sorted.map(d => { const v = num(d.value); cum += v; return { ...d, v, cum }; });
         const dataMap = {};
         allDailyData.forEach(d => { dataMap[d.date] = d; });
-
         const desc = [...withCum].reverse();
         tbody.innerHTML = desc.map(d => {
             const dd = dataMap[d.date] || {};
-            return `
-                <tr>
-                    <td>${d.date || '-'}</td>
-                    <td class="${d.dailyVal >= 0 ? 'positive' : 'negative'}">${d.dailyVal >= 0 ? '+' : ''}${d.dailyVal.toFixed(4)}%</td>
-                    <td class="${d.cumVal >= 0 ? 'positive' : 'negative'}">${d.cumVal >= 0 ? '+' : ''}${d.cumVal.toFixed(4)}%</td>
-                    <td class="${num(dd.profit) >= 0 ? 'positive' : 'negative'}">${dd.profit !== undefined ? fmtMoney(num(dd.profit)) : '-'}</td>
-                    <td>${dd.balance !== undefined ? fmtMoney(num(dd.balance)) : '-'}</td>
-                    <td>${dd.equity !== undefined ? fmtMoney(num(dd.equity)) : '-'}</td>
-                </tr>
-            `;
+            return `<tr>
+                <td>${d.date||'-'}</td>
+                <td class="${d.v>=0?'positive':'negative'}">${d.v>=0?'+':''}${d.v.toFixed(4)}%</td>
+                <td class="${d.cum>=0?'positive':'negative'}">${d.cum>=0?'+':''}${d.cum.toFixed(4)}%</td>
+                <td class="${num(dd.profit)>=0?'positive':'negative'}">${dd.profit!==undefined?fmtMoney(num(dd.profit)):'-'}</td>
+                <td>${dd.balance!==undefined?fmtMoney(num(dd.balance)):'-'}</td>
+                <td>${dd.equity!==undefined?fmtMoney(num(dd.equity)):'-'}</td>
+            </tr>`;
         }).join('');
     }
 
-    // ========== UI Helpers ==========
-    function showDashboard() {
-        loginSection.style.display = 'none';
-        dashboardSection.style.display = 'block';
-    }
-    function showLogin() {
-        loginSection.style.display = 'flex';
-        dashboardSection.style.display = 'none';
-        mainContent.style.display = 'none';
-        loginForm.reset();
-    }
+    // ========== UI ==========
+    function showDashboard() { loginSection.style.display = 'none'; dashboardSection.style.display = 'block'; }
+    function showLogin() { loginSection.style.display = 'flex'; dashboardSection.style.display = 'none'; allAccountsView.style.display = 'none'; accountDetailView.style.display = 'none'; loginForm.reset(); }
     function showLoading(s) { loading.style.display = s ? 'block' : 'none'; }
     function showError(m) { loginError.textContent = m; loginError.classList.add('show'); }
     function hideError() { loginError.classList.remove('show'); }
+    function setStat(id, text, color) { const el = document.getElementById(id); el.textContent = text; el.className = 'stat-value'; if (color !== undefined) el.classList.add(color >= 0 ? 'positive' : 'negative'); }
     function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
 
     // ========== Formatters ==========
     function num(v) { return parseFloat(v) || 0; }
-    function fmtMoney(v) {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
-    }
-    function fmtDateTime(s) {
-        if (!s) return '-';
-        try {
-            const d = new Date(s);
-            return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-        } catch { return s; }
-    }
-    function fmtShortDate(s) {
-        if (!s) return '';
-        const parts = s.split('-');
-        if (parts.length >= 3) return `${parts[2]}/${parts[1]}`;
-        return s.substring(5);
-    }
-    function formatDateAPI(d) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth()+1).padStart(2,'0');
-        const day = String(d.getDate()).padStart(2,'0');
-        return `${y}-${m}-${day}`;
-    }
-    function getLots(t) {
-        if (t.sizing && typeof t.sizing === 'object' && t.sizing.value) return t.sizing.value;
-        return t.lots || '-';
-    }
+    function fmtMoney(v) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v); }
+    function fmtDateTime(s) { if (!s) return '-'; try { return new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }); } catch { return s; } }
+    function fmtRelTime(s) { try { const diff = (new Date() - new Date(s))/1000; if (diff<60) return 'Just now'; if (diff<3600) return `${Math.floor(diff/60)}m ago`; if (diff<86400) return `${Math.floor(diff/3600)}h ago`; return `${Math.floor(diff/86400)}d ago`; } catch { return s; } }
+    function formatDateAPI(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+    function getLots(t) { if (t.sizing && typeof t.sizing === 'object' && t.sizing.value) return t.sizing.value; return t.lots || '-'; }
 });
