@@ -216,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="account-card-stat">
                             <span class="label">Win Rate</span>
-                            <span class="value">${winRate.toFixed(1)}%</span>
+                            <span class="value">—</span>
                         </div>
                         <div class="account-card-stat">
                             <span class="label">Trades</span>
@@ -277,6 +277,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderMonthlyTable();
         renderDailyGainTable();
+
+        // Recalculate Win Rate after history is loaded
+        const winRate = getWinRate(selectedAccount);
+        setStat('stat-winrate', `${winRate.toFixed(1)}%`, winRate >= 50 ? 1 : -1);
+        setText('adv-winrate', `${winRate.toFixed(1)}%`);
     }
 
     async function handleRefresh() {
@@ -320,45 +325,13 @@ document.addEventListener('DOMContentLoaded', () => {
         setStat('stat-winrate', `${winRate.toFixed(1)}%`, winRate >= 50 ? 1 : -1);
     }
 
-    // คำนวณ Win Rate จากหลายแหล่งข้อมูลที่ API ส่งมา
+    // คำนวณ Win Rate จาก trade history (API ไม่ส่ง wonTrades/longsWon มาใน get-my-accounts)
     function getWinRate(acc) {
-        // Log เพื่อ debug
-        console.log('[WIN RATE] Fields:', {
-            wonTrades: acc.wonTrades,
-            lostTrades: acc.lostTrades,
-            longsWon: acc.longsWon,
-            shortsWon: acc.shortsWon,
-            longPercentage: acc.longPercentage,
-            shortPercentage: acc.shortPercentage,
-            wonTradesPercentage: acc.wonTradesPercentage,
-            lostTradesPercentage: acc.lostTradesPercentage
-        });
-
-        // วิธี 1: ใช้ wonTrades / lostTrades โดยตรง
-        const won = num(acc.wonTrades);
-        const lost = num(acc.lostTrades);
-        if (won + lost > 0) return (won / (won + lost)) * 100;
-
-        // วิธี 2: ใช้ wonTradesPercentage โดยตรง (ถ้ามี)
-        if (acc.wonTradesPercentage) return num(acc.wonTradesPercentage);
-
-        // วิธี 3: ใช้ longsWon + shortsWon หารเฉลี่ย (เป็น % ของ long/short ที่ชนะ)
-        const longsWon = num(acc.longsWon);
-        const shortsWon = num(acc.shortsWon);
-        if (longsWon > 0 && shortsWon > 0) {
-            return (longsWon + shortsWon) / 2;
-        } else if (longsWon > 0) {
-            return longsWon;
-        } else if (shortsWon > 0) {
-            return shortsWon;
-        }
-
-        // วิธี 4: คำนวณจาก history (ถ้าโหลดแล้ว)
+        // คำนวณจาก history (วิธีเดียวที่ถูกต้อง เพราะ API ไม่ส่งข้อมูล win/loss มา)
         if (allHistory && allHistory.length > 0) {
             const wonCount = allHistory.filter(t => num(t.profit) > 0).length;
-            if (allHistory.length > 0) return (wonCount / allHistory.length) * 100;
+            return (wonCount / allHistory.length) * 100;
         }
-
         return 0;
     }
 
