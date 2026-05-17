@@ -1,300 +1,506 @@
 /**
  * WebFX - Myfxbook Dashboard Application
+ * Pages: Login → All Accounts → Account Detail
+ * Features: All API endpoints, date filters, win rate from history, community outlook
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Elements
-    const loginSection = document.getElementById('login-section');
-    const dashboardSection = document.getElementById('dashboard-section');
-    const loginForm = document.getElementById('login-form');
-    const loginError = document.getElementById('login-error');
-    const userEmail = document.getElementById('user-email');
-    const btnLogout = document.getElementById('btn-logout');
-    const accountSelect = document.getElementById('account-select');
-    const btnRefresh = document.getElementById('btn-refresh');
-    const loading = document.getElementById('loading');
-    const accountOverview = document.getElementById('account-overview');
-    const tabsSection = document.getElementById('tabs-section');
-
-    // State
+    // ========== State ==========
     let accounts = [];
-    let selectedAccount = null;
+    let selectedAccountId = null;
+    let historyCache = {};
 
     // ========== Initialize ==========
     init();
 
     function init() {
-        // Check for existing session
         if (MyfxbookAPI.restoreSession()) {
-            showDashboard();
+            showPage('accounts');
             loadAccounts();
+            loadCommunityOutlook();
+        } else {
+            showPage('login');
         }
+        bindEvents();
+    }
 
-        // Event Listeners
-        loginForm.addEventListener('submit', handleLogin);
-        btnLogout.addEventListener('click', handleLogout);
-        accountSelect.addEventListener('change', handleAccountChange);
-        btnRefresh.addEventListener('click', handleRefresh);
-
-        // Tab switching
+    function bindEvents() {
+        // Login
+        document.getElementById('login-form').addEventListener('submit', handleLogin);
+        // Logout
+        document.getElementById('btn-logout').addEventListener('click', handleLogout);
+        document.getElementById('btn-logout-mobile').addEventListener('click', handleLogout);
+        // Refresh
+        document.getElementById('btn-refresh').addEventListener('click', () => {
+            loadAccounts();
+            loadCommunityOutlook();
+        });
+        // Back button
+        document.getElementById('btn-back').addEventListener('click', () => {
+            showPage('accounts');
+        });
+        // Detail tabs
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
+        // Date filter
+        document.getElementById('btn-apply-date').addEventListener('click', applyDateFilter);
+        // Quick date buttons
+        document.querySelectorAll('.quick-date-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const days = parseInt(btn.dataset.days);
+                setQuickDate(days);
+                document.querySelectorAll('.quick-date-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
+    // ========== Page Navigation ==========
+    function showPage(page) {
+        document.getElementById('page-login').style.display = page === 'login' ? 'flex' : 'none';
+        document.getElementById('page-accounts').style.display = page === 'accounts' ? 'block' : 'none';
+        document.getElementById('page-detail').style.display = page === 'detail' ? 'block' : 'none';
     }
 
     // ========== Login ==========
     async function handleLogin(e) {
         e.preventDefault();
-
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
-        const submitBtn = loginForm.querySelector('button[type="submit"]');
+        const btn = document.getElementById('btn-login');
+        const errorEl = document.getElementById('login-error');
 
-        // UI state
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังเข้าสู่ระบบ...';
-        hideError();
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังเข้าสู่ระบบ...';
+        errorEl.style.display = 'none';
 
         try {
             const result = await MyfxbookAPI.login(email, password);
-
             if (result.error === false) {
-                showDashboard();
+                showPage('accounts');
                 loadAccounts();
+                loadCommunityOutlook();
             } else {
-                showError(result.message || 'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบอีเมลและรหัสผ่าน');
+                errorEl.textContent = result.message || 'เข้าสู่ระบบไม่สำเร็จ';
+                errorEl.style.display = 'block';
             }
-        } catch (error) {
-            showError('ไม่สามารถเชื่อมต่อกับ Myfxbook ได้ กรุณาลองใหม่อีกครั้ง');
-            console.error('Login error:', error);
+        } catch (err) {
+            errorEl.textContent = 'ไม่สามารถเชื่อมต่อ Myfxbook API ได้';
+            errorEl.style.display = 'block';
         } finally {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ';
         }
     }
 
-    // ========== Logout ==========
     async function handleLogout() {
-        try {
-            await MyfxbookAPI.logout();
-        } catch (error) {
-            console.error('Logout error:', error);
-        }
-        showLogin();
+        try { await MyfxbookAPI.logout(); } catch (e) {}
+        accounts = [];
+        historyCache = {};
+        showPage('login');
     }
 
-    // ========== Load Accounts ==========
+    // ========== All Accounts Page ==========
     async function loadAccounts() {
-        showLoading(true);
+        const grid = document.getElementById('accounts-grid');
+        grid.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> กำลังโหลดบัญชี...</div>';
 
         try {
             const result = await MyfxbookAPI.getMyAccounts();
-
             if (result.error === false && result.accounts) {
                 accounts = result.accounts;
-                populateAccountSelect(accounts);
-
-                // Auto-select first account
-                if (accounts.length > 0) {
-                    accountSelect.value = accounts[0].id;
-                    handleAccountChange();
-                }
+                // Load history for each to compute win rate
+                await loadAllHistories();
+                renderAccountCards();
             } else {
-                // Session expired
-                if (result.message && result.message.includes('session')) {
-                    showLogin();
-                    showError('Session หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+                if (result.message && result.message.toLowerCase().includes('session')) {
+                    handleLogout();
+                    return;
                 }
+                grid.innerHTML = '<div class="loading-state">ไม่สามารถโหลดข้อมูลบัญชีได้</div>';
             }
-        } catch (error) {
-            console.error('Load accounts error:', error);
-        } finally {
-            showLoading(false);
+        } catch (err) {
+            grid.innerHTML = '<div class="loading-state">เกิดข้อผิดพลาด</div>';
         }
     }
 
-    // ========== Account Selection ==========
-    function populateAccountSelect(accounts) {
-        accountSelect.innerHTML = '<option value="">-- เลือกบัญชี --</option>';
-        accounts.forEach(acc => {
-            const option = document.createElement('option');
-            option.value = acc.id;
-            option.textContent = `${acc.name} (${acc.server || 'N/A'}) - ${acc.currency || 'USD'}`;
-            accountSelect.appendChild(option);
+    async function loadAllHistories() {
+        const promises = accounts.map(async (acc) => {
+            try {
+                const result = await MyfxbookAPI.getHistory(acc.id);
+                if (result.error === false && result.history) {
+                    historyCache[acc.id] = result.history;
+                }
+            } catch (e) {
+                historyCache[acc.id] = [];
+            }
         });
+        await Promise.all(promises);
     }
 
-    async function handleAccountChange() {
-        const accountId = accountSelect.value;
-        if (!accountId) {
-            accountOverview.style.display = 'none';
-            tabsSection.style.display = 'none';
+    function calcWinRate(accountId) {
+        const history = historyCache[accountId] || [];
+        if (history.length === 0) return null;
+        const wins = history.filter(t => parseFloat(t.profit) > 0).length;
+        return ((wins / history.length) * 100).toFixed(1);
+    }
+
+    function renderAccountCards() {
+        const grid = document.getElementById('accounts-grid');
+        if (accounts.length === 0) {
+            grid.innerHTML = '<div class="loading-state">ไม่พบบัญชี</div>';
             return;
         }
 
-        selectedAccount = accounts.find(a => a.id == accountId);
-        if (selectedAccount) {
-            displayAccountOverview(selectedAccount);
-            accountOverview.style.display = 'grid';
-            tabsSection.style.display = 'block';
+        grid.innerHTML = accounts.map(acc => {
+            const profit = parseFloat(acc.profit) || 0;
+            const gain = parseFloat(acc.gain) || 0;
+            const drawdown = parseFloat(acc.drawdown) || 0;
+            const balance = parseFloat(acc.balance) || 0;
+            const equity = parseFloat(acc.equity) || 0;
+            const winRate = calcWinRate(acc.id);
 
-            // Load tab data
-            loadOpenTrades(accountId);
-            loadHistory(accountId);
-            loadDailyGain(accountId);
-        }
+            return `
+                <div class="account-card" onclick="window.openAccountDetail(${acc.id})">
+                    <div class="account-card-header">
+                        <div class="account-name">${acc.name || 'Unnamed'}</div>
+                        <div class="account-server">${acc.server || ''}</div>
+                    </div>
+                    <div class="account-card-body">
+                        <div class="account-stat">
+                            <span class="stat-label">Balance</span>
+                            <span class="stat-value">${formatCurrency(balance)}</span>
+                        </div>
+                        <div class="account-stat">
+                            <span class="stat-label">Equity</span>
+                            <span class="stat-value">${formatCurrency(equity)}</span>
+                        </div>
+                        <div class="account-stat">
+                            <span class="stat-label">Profit</span>
+                            <span class="stat-value ${profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(profit)}</span>
+                        </div>
+                        <div class="account-stat">
+                            <span class="stat-label">Gain</span>
+                            <span class="stat-value ${gain >= 0 ? 'positive' : 'negative'}">${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%</span>
+                        </div>
+                        <div class="account-stat">
+                            <span class="stat-label">Drawdown</span>
+                            <span class="stat-value negative">${drawdown.toFixed(2)}%</span>
+                        </div>
+                        <div class="account-stat">
+                            <span class="stat-label">Win Rate</span>
+                            <span class="stat-value">${winRate !== null ? winRate + '%' : 'N/A'}</span>
+                        </div>
+                    </div>
+                    <div class="account-card-footer">
+                        <span class="trades-count"><i class="fas fa-exchange-alt"></i> ${acc.trades || 0} trades</span>
+                        <span class="view-detail"><i class="fas fa-arrow-right"></i> รายละเอียด</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
-    function handleRefresh() {
-        const btn = document.getElementById('btn-refresh');
-        btn.querySelector('i').classList.add('fa-spin');
-        
-        loadAccounts().finally(() => {
-            setTimeout(() => {
-                btn.querySelector('i').classList.remove('fa-spin');
-            }, 500);
-        });
-    }
+    // ========== Account Detail Page ==========
+    window.openAccountDetail = function(accountId) {
+        selectedAccountId = accountId;
+        const acc = accounts.find(a => a.id == accountId);
+        if (!acc) return;
 
-    // ========== Display Account Overview ==========
-    function displayAccountOverview(account) {
-        const balance = parseFloat(account.balance) || 0;
-        const equity = parseFloat(account.equity) || 0;
-        const profit = parseFloat(account.profit) || 0;
-        const gain = parseFloat(account.gain) || 0;
-        const drawdown = parseFloat(account.drawdown) || 0;
-        const trades = account.trades || 0;
+        showPage('detail');
+        renderDetailOverview(acc);
+        setDefaultDates();
+        switchTab('open-trades');
+        loadDetailData(accountId);
+    };
 
-        document.getElementById('balance').textContent = formatCurrency(balance);
-        document.getElementById('equity').textContent = formatCurrency(equity);
+    function renderDetailOverview(acc) {
+        const profit = parseFloat(acc.profit) || 0;
+        const gain = parseFloat(acc.gain) || 0;
+        const drawdown = parseFloat(acc.drawdown) || 0;
+        const balance = parseFloat(acc.balance) || 0;
+        const equity = parseFloat(acc.equity) || 0;
+        const winRate = calcWinRate(acc.id);
 
-        const profitEl = document.getElementById('profit');
+        document.getElementById('detail-account-name').textContent = acc.name || 'Account';
+        document.getElementById('detail-server').textContent = acc.server || '';
+
+        document.getElementById('detail-balance').textContent = formatCurrency(balance);
+        document.getElementById('detail-equity').textContent = formatCurrency(equity);
+
+        const profitEl = document.getElementById('detail-profit');
         profitEl.textContent = formatCurrency(profit);
-        profitEl.className = `card-value ${profit >= 0 ? 'positive' : 'negative'}`;
+        profitEl.className = `stat-value ${profit >= 0 ? 'positive' : 'negative'}`;
 
-        const gainEl = document.getElementById('gain');
+        const gainEl = document.getElementById('detail-gain');
         gainEl.textContent = `${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%`;
-        gainEl.className = `card-value ${gain >= 0 ? 'positive' : 'negative'}`;
+        gainEl.className = `stat-value ${gain >= 0 ? 'positive' : 'negative'}`;
 
-        const drawdownEl = document.getElementById('drawdown');
-        drawdownEl.textContent = `${drawdown.toFixed(2)}%`;
-        drawdownEl.className = 'card-value negative';
+        const ddEl = document.getElementById('detail-drawdown');
+        ddEl.textContent = `${drawdown.toFixed(2)}%`;
+        ddEl.className = 'stat-value negative';
 
-        document.getElementById('trades-count').textContent = trades.toLocaleString();
+        const wrEl = document.getElementById('detail-winrate');
+        wrEl.textContent = winRate !== null ? winRate + '%' : 'N/A';
+
+        document.getElementById('detail-trades').textContent = acc.trades || 0;
+        document.getElementById('detail-deposits').textContent = formatCurrency(parseFloat(acc.deposits) || 0);
     }
 
-    // ========== Load Open Trades ==========
+    async function loadDetailData(accountId) {
+        loadOpenTrades(accountId);
+        loadOpenOrders(accountId);
+        loadHistory(accountId);
+        loadDateRangeData(accountId);
+    }
+
+    // ========== Open Trades ==========
     async function loadOpenTrades(accountId) {
         const tbody = document.getElementById('open-trades-body');
-        tbody.innerHTML = '<tr><td colspan="8" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
+        tbody.innerHTML = loadingRow(8);
 
         try {
             const result = await MyfxbookAPI.getOpenTrades(accountId);
-
             if (result.error === false && result.openTrades && result.openTrades.length > 0) {
-                tbody.innerHTML = result.openTrades.map(trade => `
+                tbody.innerHTML = result.openTrades.map(t => `
                     <tr>
-                        <td><strong>${trade.symbol || '-'}</strong></td>
-                        <td><span class="${trade.action === 'Buy' ? 'buy-badge' : 'sell-badge'}">${trade.action || '-'}</span></td>
-                        <td>${trade.sizing && trade.sizing.value ? trade.sizing.value : (trade.lots || '-')}</td>
-                        <td>${trade.openPrice || '-'}</td>
-                        <td>${trade.currentPrice || '-'}</td>
-                        <td class="${parseFloat(trade.profit) >= 0 ? 'positive' : 'negative'}">
-                            ${formatCurrency(parseFloat(trade.profit) || 0)}
-                        </td>
-                        <td class="${parseFloat(trade.pips) >= 0 ? 'positive' : 'negative'}">
-                            ${trade.pips || '0'}
-                        </td>
-                        <td>${formatDate(trade.openTime)}</td>
+                        <td><strong>${t.symbol || '-'}</strong></td>
+                        <td><span class="badge ${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
+                        <td>${t.sizing?.value || t.lots || '-'}</td>
+                        <td>${t.openPrice || '-'}</td>
+                        <td>${t.currentPrice || '-'}</td>
+                        <td>${t.tp || '-'}</td>
+                        <td>${t.sl || '-'}</td>
+                        <td class="${parseFloat(t.profit) >= 0 ? 'positive' : 'negative'}">${formatCurrency(parseFloat(t.profit) || 0)}</td>
+                        <td class="${parseFloat(t.pips) >= 0 ? 'positive' : 'negative'}">${t.pips || '0'}</td>
+                        <td>${formatDateTime(t.openTime)}</td>
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="no-data">ไม่มี Open Trades ในขณะนี้</td></tr>';
+                tbody.innerHTML = emptyRow(10, 'ไม่มี Open Trades');
             }
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="8" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            console.error('Open trades error:', error);
+        } catch (e) {
+            tbody.innerHTML = emptyRow(10, 'เกิดข้อผิดพลาด');
         }
     }
 
-    // ========== Load History ==========
+    // ========== Open Orders ==========
+    async function loadOpenOrders(accountId) {
+        const tbody = document.getElementById('open-orders-body');
+        tbody.innerHTML = loadingRow(7);
+
+        try {
+            const result = await MyfxbookAPI.getOpenOrders(accountId);
+            if (result.error === false && result.openOrders && result.openOrders.length > 0) {
+                tbody.innerHTML = result.openOrders.map(o => `
+                    <tr>
+                        <td><strong>${o.symbol || '-'}</strong></td>
+                        <td><span class="badge ${o.action?.includes('Buy') ? 'badge-buy' : 'badge-sell'}">${o.action || '-'}</span></td>
+                        <td>${o.sizing?.value || o.lots || '-'}</td>
+                        <td>${o.openPrice || '-'}</td>
+                        <td>${o.tp || '-'}</td>
+                        <td>${o.sl || '-'}</td>
+                        <td>${formatDateTime(o.openTime)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = emptyRow(7, 'ไม่มี Open Orders');
+            }
+        } catch (e) {
+            tbody.innerHTML = emptyRow(7, 'เกิดข้อผิดพลาด');
+        }
+    }
+
+    // ========== History ==========
     async function loadHistory(accountId) {
         const tbody = document.getElementById('history-body');
-        tbody.innerHTML = '<tr><td colspan="9" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
+        tbody.innerHTML = loadingRow(10);
 
         try {
-            const result = await MyfxbookAPI.getHistory(accountId);
-
-            if (result.error === false && result.history && result.history.length > 0) {
-                // Show latest 50 trades
-                const trades = result.history.slice(-50).reverse();
-                tbody.innerHTML = trades.map(trade => `
+            const history = historyCache[accountId] || [];
+            if (history.length > 0) {
+                const trades = history.slice(-100).reverse();
+                tbody.innerHTML = trades.map(t => `
                     <tr>
-                        <td><strong>${trade.symbol || '-'}</strong></td>
-                        <td><span class="${trade.action === 'Buy' ? 'buy-badge' : 'sell-badge'}">${trade.action || '-'}</span></td>
-                        <td>${trade.sizing && trade.sizing.value ? trade.sizing.value : (trade.lots || '-')}</td>
-                        <td>${trade.openPrice || '-'}</td>
-                        <td>${trade.closePrice || '-'}</td>
-                        <td class="${parseFloat(trade.profit) >= 0 ? 'positive' : 'negative'}">
-                            ${formatCurrency(parseFloat(trade.profit) || 0)}
-                        </td>
-                        <td class="${parseFloat(trade.pips) >= 0 ? 'positive' : 'negative'}">
-                            ${trade.pips || '0'}
-                        </td>
-                        <td>${formatDate(trade.openTime)}</td>
-                        <td>${formatDate(trade.closeTime)}</td>
+                        <td><strong>${t.symbol || '-'}</strong></td>
+                        <td><span class="badge ${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
+                        <td>${t.sizing?.value || t.lots || '-'}</td>
+                        <td>${t.openPrice || '-'}</td>
+                        <td>${t.closePrice || '-'}</td>
+                        <td>${t.tp || '-'}</td>
+                        <td>${t.sl || '-'}</td>
+                        <td class="${parseFloat(t.profit) >= 0 ? 'positive' : 'negative'}">${formatCurrency(parseFloat(t.profit) || 0)}</td>
+                        <td class="${parseFloat(t.pips) >= 0 ? 'positive' : 'negative'}">${t.pips || '0'}</td>
+                        <td>${formatDateTime(t.openTime)}</td>
+                        <td>${formatDateTime(t.closeTime)}</td>
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="9" class="no-data">ไม่มีข้อมูลประวัติการเทรด</td></tr>';
+                // Try loading fresh
+                const result = await MyfxbookAPI.getHistory(accountId);
+                if (result.error === false && result.history && result.history.length > 0) {
+                    historyCache[accountId] = result.history;
+                    loadHistory(accountId);
+                    return;
+                }
+                tbody.innerHTML = emptyRow(11, 'ไม่มีประวัติการเทรด');
             }
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="9" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            console.error('History error:', error);
+        } catch (e) {
+            tbody.innerHTML = emptyRow(11, 'เกิดข้อผิดพลาด');
         }
     }
 
-    // ========== Load Daily Gain ==========
-    async function loadDailyGain(accountId) {
+    // ========== Date Range Data ==========
+    function setDefaultDates() {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 30);
+        document.getElementById('date-start').value = formatDateInput(start);
+        document.getElementById('date-end').value = formatDateInput(end);
+    }
+
+    function setQuickDate(days) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        document.getElementById('date-start').value = formatDateInput(start);
+        document.getElementById('date-end').value = formatDateInput(end);
+        applyDateFilter();
+    }
+
+    function applyDateFilter() {
+        if (!selectedAccountId) return;
+        loadDateRangeData(selectedAccountId);
+    }
+
+    async function loadDateRangeData(accountId) {
+        const start = document.getElementById('date-start').value;
+        const end = document.getElementById('date-end').value;
+        if (!start || !end) return;
+
+        loadDailyGain(accountId, start, end);
+        loadDataDaily(accountId, start, end);
+        loadGain(accountId, start, end);
+    }
+
+    // ========== Daily Gain ==========
+    async function loadDailyGain(accountId, start, end) {
         const tbody = document.getElementById('daily-gain-body');
-        tbody.innerHTML = '<tr><td colspan="3" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
+        tbody.innerHTML = loadingRow(3);
 
         try {
-            // Get last 30 days
-            const end = new Date();
-            const start = new Date();
-            start.setDate(start.getDate() - 30);
-
-            const startStr = formatDateAPI(start);
-            const endStr = formatDateAPI(end);
-
-            const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
-
+            const result = await MyfxbookAPI.getDailyGain(accountId, start, end);
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
-                const gains = result.dailyGain.slice(-30).reverse();
-                let cumulativeGain = 0;
-
-                tbody.innerHTML = gains.map(day => {
-                    const dailyProfit = parseFloat(day.value) || 0;
-                    cumulativeGain += dailyProfit;
+                let cumulative = 0;
+                const rows = result.dailyGain.slice().reverse();
+                tbody.innerHTML = rows.map(d => {
+                    const val = parseFloat(d.value) || 0;
+                    cumulative += val;
                     return `
                         <tr>
-                            <td>${day.date || '-'}</td>
-                            <td class="${dailyProfit >= 0 ? 'positive' : 'negative'}">
-                                ${dailyProfit >= 0 ? '+' : ''}${dailyProfit.toFixed(4)}%
-                            </td>
-                            <td class="${cumulativeGain >= 0 ? 'positive' : 'negative'}">
-                                ${cumulativeGain >= 0 ? '+' : ''}${cumulativeGain.toFixed(4)}%
-                            </td>
+                            <td>${d.date || '-'}</td>
+                            <td class="${val >= 0 ? 'positive' : 'negative'}">${val >= 0 ? '+' : ''}${val.toFixed(4)}%</td>
+                            <td class="${cumulative >= 0 ? 'positive' : 'negative'}">${cumulative >= 0 ? '+' : ''}${cumulative.toFixed(4)}%</td>
                         </tr>
                     `;
                 }).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="3" class="no-data">ไม่มีข้อมูลกำไรรายวัน</td></tr>';
+                tbody.innerHTML = emptyRow(3, 'ไม่มีข้อมูล');
             }
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="3" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            console.error('Daily gain error:', error);
+        } catch (e) {
+            tbody.innerHTML = emptyRow(3, 'เกิดข้อผิดพลาด');
+        }
+    }
+
+    // ========== Data Daily ==========
+    async function loadDataDaily(accountId, start, end) {
+        const tbody = document.getElementById('data-daily-body');
+        tbody.innerHTML = loadingRow(6);
+
+        try {
+            const result = await MyfxbookAPI.getDataDaily(accountId, start, end);
+            if (result.error === false && result.dataDaily && result.dataDaily.length > 0) {
+                const rows = result.dataDaily.slice().reverse();
+                tbody.innerHTML = rows.map(d => `
+                    <tr>
+                        <td>${d.date || '-'}</td>
+                        <td>${formatCurrency(parseFloat(d.balance) || 0)}</td>
+                        <td>${formatCurrency(parseFloat(d.equity) || 0)}</td>
+                        <td class="${parseFloat(d.profit) >= 0 ? 'positive' : 'negative'}">${formatCurrency(parseFloat(d.profit) || 0)}</td>
+                        <td>${formatCurrency(parseFloat(d.deposits) || 0)}</td>
+                        <td>${formatCurrency(parseFloat(d.withdrawals) || 0)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = emptyRow(6, 'ไม่มีข้อมูล');
+            }
+        } catch (e) {
+            tbody.innerHTML = emptyRow(6, 'เกิดข้อผิดพลาด');
+        }
+    }
+
+    // ========== Gain ==========
+    async function loadGain(accountId, start, end) {
+        const container = document.getElementById('gain-data');
+
+        try {
+            const result = await MyfxbookAPI.getGain(accountId, start, end);
+            if (result.error === false && result.value !== undefined) {
+                const val = parseFloat(result.value) || 0;
+                container.innerHTML = `
+                    <div class="gain-display">
+                        <div class="gain-value ${val >= 0 ? 'positive' : 'negative'}">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</div>
+                        <div class="gain-label">ผลกำไรช่วงเวลาที่เลือก</div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = '<div class="gain-display"><div class="gain-label">ไม่มีข้อมูล</div></div>';
+            }
+        } catch (e) {
+            container.innerHTML = '<div class="gain-display"><div class="gain-label">เกิดข้อผิดพลาด</div></div>';
+        }
+    }
+
+    // ========== Community Outlook ==========
+    async function loadCommunityOutlook() {
+        const container = document.getElementById('community-outlook');
+        if (!container) return;
+
+        try {
+            const result = await MyfxbookAPI.getCommunityOutlook();
+            if (result.error === false && result.symbols) {
+                const symbols = result.symbols.slice(0, 12);
+                container.innerHTML = `
+                    <div class="outlook-grid">
+                        ${symbols.map(s => {
+                            const longPct = parseFloat(s.longPercentage) || 0;
+                            const shortPct = parseFloat(s.shortPercentage) || 0;
+                            return `
+                                <div class="outlook-card">
+                                    <div class="outlook-symbol">${s.name || '-'}</div>
+                                    <div class="outlook-bar">
+                                        <div class="bar-long" style="width: ${longPct}%"></div>
+                                        <div class="bar-short" style="width: ${shortPct}%"></div>
+                                    </div>
+                                    <div class="outlook-labels">
+                                        <span class="positive">${longPct.toFixed(0)}% Long</span>
+                                        <span class="negative">${shortPct.toFixed(0)}% Short</span>
+                                    </div>
+                                    <div class="outlook-volumes">
+                                        <span>Vol L: ${s.longVolume || 0}</span>
+                                        <span>Vol S: ${s.shortVolume || 0}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else {
+                container.innerHTML = '<div class="loading-state">ไม่สามารถโหลด Community Outlook</div>';
+            }
+        } catch (e) {
+            container.innerHTML = '<div class="loading-state">เกิดข้อผิดพลาด</div>';
         }
     }
 
@@ -303,69 +509,34 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tabId);
         });
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.toggle('active', content.id === tabId);
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.toggle('active', panel.id === `panel-${tabId}`);
         });
     }
 
-    // ========== UI Helpers ==========
-    function showDashboard() {
-        loginSection.style.display = 'none';
-        dashboardSection.style.display = 'block';
-        const email = localStorage.getItem('myfxbook_email') || '';
-        userEmail.textContent = email;
-    }
-
-    function showLogin() {
-        loginSection.style.display = 'flex';
-        dashboardSection.style.display = 'none';
-        accountOverview.style.display = 'none';
-        tabsSection.style.display = 'none';
-        loginForm.reset();
-    }
-
-    function showLoading(show) {
-        loading.style.display = show ? 'block' : 'none';
-    }
-
-    function showError(message) {
-        loginError.textContent = message;
-        loginError.classList.add('show');
-    }
-
-    function hideError() {
-        loginError.classList.remove('show');
-    }
-
-    // ========== Formatters ==========
+    // ========== Helpers ==========
     function formatCurrency(value) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 2
-        }).format(value);
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value);
     }
 
-    function formatDate(dateStr) {
-        if (!dateStr) return '-';
+    function formatDateTime(str) {
+        if (!str) return '-';
         try {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('th-TH', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch {
-            return dateStr;
-        }
+            const d = new Date(str);
+            return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        } catch { return str; }
     }
 
-    function formatDateAPI(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+    function formatDateInput(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    function loadingRow(cols) {
+        return `<tr><td colspan="${cols}" class="empty-state"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>`;
+    }
+
+    function emptyRow(cols, msg) {
+        return `<tr><td colspan="${cols}" class="empty-state">${msg}</td></tr>`;
     }
 });

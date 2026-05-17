@@ -1,18 +1,14 @@
 /**
- * Myfxbook API Client
- * Documentation: https://www.myfxbook.com/api
+ * Myfxbook API Client - WebFX
+ * All endpoints supported. Session parameter is NOT encoded (contains /).
  */
 
 const MyfxbookAPI = {
     BASE_URL: 'https://www.myfxbook.com/api',
     session: null,
 
-    /**
-     * Login to Myfxbook
-     * @param {string} email 
-     * @param {string} password 
-     * @returns {Promise<object>}
-     */
+    // ========== Authentication ==========
+
     async login(email, password) {
         const url = `${this.BASE_URL}/login.json?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`;
         const response = await fetch(url);
@@ -23,22 +19,15 @@ const MyfxbookAPI = {
             localStorage.setItem('myfxbook_session', data.session);
             localStorage.setItem('myfxbook_email', email);
         }
-
         return data;
     },
 
-    /**
-     * Logout from Myfxbook
-     * @returns {Promise<object>}
-     */
     async logout() {
         if (!this.session) return;
-
         const url = `${this.BASE_URL}/logout.json?session=${this.session}`;
         try {
             const response = await fetch(url);
-            const data = await response.json();
-            return data;
+            return await response.json();
         } finally {
             this.session = null;
             localStorage.removeItem('myfxbook_session');
@@ -46,67 +35,72 @@ const MyfxbookAPI = {
         }
     },
 
-    /**
-     * Get all accounts
-     * @returns {Promise<object>}
-     */
-    async getMyAccounts() {
-        if (!this.session) throw new Error('Not logged in');
+    // ========== Account Data ==========
 
+    async getMyAccounts() {
+        this._requireSession();
         const url = `${this.BASE_URL}/get-my-accounts.json?session=${this.session}`;
         const response = await fetch(url);
-        const data = await response.json();
-        return data;
+        return await response.json();
     },
 
-    /**
-     * Get open trades for an account
-     * @param {string|number} accountId 
-     * @returns {Promise<object>}
-     */
-    async getOpenTrades(accountId) {
-        if (!this.session) throw new Error('Not logged in');
+    // ========== Trade Data ==========
 
+    async getOpenTrades(accountId) {
+        this._requireSession();
         const url = `${this.BASE_URL}/get-open-trades.json?session=${this.session}&id=${accountId}`;
         const response = await fetch(url);
-        const data = await response.json();
-        return data;
+        return await response.json();
     },
 
-    /**
-     * Get trade history for an account
-     * @param {string|number} accountId 
-     * @returns {Promise<object>}
-     */
-    async getHistory(accountId) {
-        if (!this.session) throw new Error('Not logged in');
+    async getOpenOrders(accountId) {
+        this._requireSession();
+        const url = `${this.BASE_URL}/get-open-orders.json?session=${this.session}&id=${accountId}`;
+        const response = await fetch(url);
+        return await response.json();
+    },
 
+    async getHistory(accountId) {
+        this._requireSession();
         const url = `${this.BASE_URL}/get-history.json?session=${this.session}&id=${accountId}`;
         const response = await fetch(url);
-        const data = await response.json();
-        return data;
+        return await response.json();
     },
 
-    /**
-     * Get daily gain data
-     * @param {string|number} accountId 
-     * @param {string} start - Date format: yyyy-MM-dd
-     * @param {string} end - Date format: yyyy-MM-dd
-     * @returns {Promise<object>}
-     */
-    async getDailyGain(accountId, start, end) {
-        if (!this.session) throw new Error('Not logged in');
+    // ========== Gain & Performance (Date Range) ==========
 
+    async getDailyGain(accountId, start, end) {
+        this._requireSession();
         const url = `${this.BASE_URL}/get-daily-gain.json?session=${this.session}&id=${accountId}&start=${start}&end=${end}`;
         const response = await fetch(url);
-        const data = await response.json();
-        return data;
+        return await response.json();
     },
 
-    /**
-     * Restore session from localStorage
-     * @returns {boolean}
-     */
+    async getDataDaily(accountId, start, end) {
+        this._requireSession();
+        const url = `${this.BASE_URL}/get-data-daily.json?session=${this.session}&id=${accountId}&start=${start}&end=${end}`;
+        const response = await fetch(url);
+        return await response.json();
+    },
+
+    async getGain(accountId, start, end) {
+        this._requireSession();
+        const url = `${this.BASE_URL}/get-gain.json?session=${this.session}&id=${accountId}&start=${start}&end=${end}`;
+        const response = await fetch(url);
+        return await response.json();
+    },
+
+    // ========== Community ==========
+
+    async getCommunityOutlook() {
+        this._requireSession();
+        const url = `${this.BASE_URL}/get-community-outlook.json?session=${this.session}`;
+        const response = await fetch(url);
+        return await response.json();
+    },
+
+    // ========== Helpers ==========
+
     restoreSession() {
         const session = localStorage.getItem('myfxbook_session');
         if (session) {
@@ -116,11 +110,11 @@ const MyfxbookAPI = {
         return false;
     },
 
-    /**
-     * Check if user is logged in
-     * @returns {boolean}
-     */
     isLoggedIn() {
         return this.session !== null;
+    },
+
+    _requireSession() {
+        if (!this.session) throw new Error('Not logged in');
     }
 };
