@@ -108,11 +108,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.getMyAccounts();
+            console.log('get-my-accounts response:', result);
+
             if (result.error === false && result.accounts) {
                 accounts = result.accounts;
-                // Load history for each to compute win rate
-                await loadAllHistories();
+                // Render cards immediately (don't wait for history)
                 renderAccountCards();
+                // Load history in background for win rate
+                loadAllHistories().then(() => {
+                    renderAccountCards();
+                });
             } else {
                 if (result.message && result.message.toLowerCase().includes('session')) {
                     handleLogout();
@@ -121,26 +126,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 grid.innerHTML = '<div class="loading-state">ไม่สามารถโหลดข้อมูลบัญชีได้</div>';
             }
         } catch (err) {
+            console.error('loadAccounts error:', err);
             grid.innerHTML = '<div class="loading-state">เกิดข้อผิดพลาด</div>';
         }
     }
 
     async function loadAllHistories() {
         const promises = accounts.map(async (acc) => {
+            const id = String(acc.id);
             try {
-                const result = await MyfxbookAPI.getHistory(acc.id);
+                const result = await MyfxbookAPI.getHistory(id);
                 if (result.error === false && result.history) {
-                    historyCache[acc.id] = result.history;
+                    historyCache[id] = result.history;
                 }
             } catch (e) {
-                historyCache[acc.id] = [];
+                historyCache[id] = [];
             }
         });
         await Promise.all(promises);
     }
 
     function calcWinRate(accountId) {
-        const history = historyCache[accountId] || [];
+        const key = String(accountId);
+        const history = historyCache[key] || [];
         if (history.length === 0) return null;
         const wins = history.filter(t => parseFloat(t.profit) > 0).length;
         return ((wins / history.length) * 100).toFixed(1);
@@ -154,18 +162,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         grid.innerHTML = accounts.map(acc => {
+            // Myfxbook fields — handle both direct and nested formats
             const profit = parseFloat(acc.profit) || 0;
             const gain = parseFloat(acc.gain) || 0;
             const drawdown = parseFloat(acc.drawdown) || 0;
             const balance = parseFloat(acc.balance) || 0;
             const equity = parseFloat(acc.equity) || 0;
+            const deposits = parseFloat(acc.deposits) || 0;
             const winRate = calcWinRate(acc.id);
+            const accId = String(acc.id);
 
             return `
-                <div class="account-card" onclick="window.openAccountDetail(${acc.id})">
+                <div class="account-card" data-account-id="${accId}" onclick="window.openAccountDetail('${accId}')">
                     <div class="account-card-header">
                         <div class="account-name">${acc.name || 'Unnamed'}</div>
-                        <div class="account-server">${acc.server || ''}</div>
+                        <div class="account-server">${acc.server || ''} ${acc.currency ? '(' + acc.currency + ')' : ''}</div>
                     </div>
                     <div class="account-card-body">
                         <div class="account-stat">
@@ -190,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="account-stat">
                             <span class="stat-label">Win Rate</span>
-                            <span class="stat-value">${winRate !== null ? winRate + '%' : 'N/A'}</span>
+                            <span class="stat-value">${winRate !== null ? winRate + '%' : 'กำลังคำนวณ...'}</span>
                         </div>
                     </div>
                     <div class="account-card-footer">
@@ -204,15 +215,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ========== Account Detail Page ==========
     window.openAccountDetail = function(accountId) {
-        selectedAccountId = accountId;
-        const acc = accounts.find(a => a.id == accountId);
-        if (!acc) return;
+        const accId = String(accountId);
+        selectedAccountId = accId;
+        const acc = accounts.find(a => String(a.id) === accId);
+        if (!acc) {
+            console.error('Account not found:', accId);
+            return;
+        }
 
         showPage('detail');
         renderDetailOverview(acc);
         setDefaultDates();
         switchTab('open-trades');
-        loadDetailData(accountId);
+        loadDetailData(accId);
     };
 
     function renderDetailOverview(acc) {
@@ -224,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const winRate = calcWinRate(acc.id);
 
         document.getElementById('detail-account-name').textContent = acc.name || 'Account';
-        document.getElementById('detail-server').textContent = acc.server || '';
+        document.getElementById('detail-server').textContent = `${acc.server || ''} ${acc.currency ? '(' + acc.currency + ')' : ''}`;
 
         document.getElementById('detail-balance').textContent = formatCurrency(balance);
         document.getElementById('detail-equity').textContent = formatCurrency(equity);
@@ -258,29 +273,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== Open Trades ==========
     async function loadOpenTrades(accountId) {
         const tbody = document.getElementById('open-trades-body');
-        tbody.innerHTML = loadingRow(8);
+        tbody.innerHTML = loadingRow(10);
 
         try {
             const result = await MyfxbookAPI.getOpenTrades(accountId);
+            console.log('get-open-trades response:', result);
+
             if (result.error === false && result.openTrades && result.openTrades.length > 0) {
-                tbody.innerHTML = result.openTrades.map(t => `
+                tbody.innerHTML = result.openTrades.map(t => {
+                    const lots = t.sizing ? t.sizing.value : (t.lots || '-');
+                    const profit = parseFloat(t.profit) || 0;
+                    const pips = parseFloat(t.pips) || 0;
+                    return `
                     <tr>
                         <td><strong>${t.symbol || '-'}</strong></td>
-                        <td><span class="badge ${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
-                        <td>${t.sizing?.value || t.lots || '-'}</td>
+                        <td><span class="badge ${(t.action || '').toLowerCase().includes('buy') ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
+                        <td>${lots}</td>
                         <td>${t.openPrice || '-'}</td>
                         <td>${t.currentPrice || '-'}</td>
                         <td>${t.tp || '-'}</td>
                         <td>${t.sl || '-'}</td>
-                        <td class="${parseFloat(t.profit) >= 0 ? 'positive' : 'negative'}">${formatCurrency(parseFloat(t.profit) || 0)}</td>
-                        <td class="${parseFloat(t.pips) >= 0 ? 'positive' : 'negative'}">${t.pips || '0'}</td>
+                        <td class="${profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(profit)}</td>
+                        <td class="${pips >= 0 ? 'positive' : 'negative'}">${pips.toFixed(1)}</td>
                         <td>${formatDateTime(t.openTime)}</td>
                     </tr>
-                `).join('');
+                    `;
+                }).join('');
             } else {
                 tbody.innerHTML = emptyRow(10, 'ไม่มี Open Trades');
             }
         } catch (e) {
+            console.error('loadOpenTrades error:', e);
             tbody.innerHTML = emptyRow(10, 'เกิดข้อผิดพลาด');
         }
     }
@@ -292,22 +315,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.getOpenOrders(accountId);
+            console.log('get-open-orders response:', result);
+
             if (result.error === false && result.openOrders && result.openOrders.length > 0) {
-                tbody.innerHTML = result.openOrders.map(o => `
+                tbody.innerHTML = result.openOrders.map(o => {
+                    const lots = o.sizing ? o.sizing.value : (o.lots || '-');
+                    return `
                     <tr>
                         <td><strong>${o.symbol || '-'}</strong></td>
-                        <td><span class="badge ${o.action?.includes('Buy') ? 'badge-buy' : 'badge-sell'}">${o.action || '-'}</span></td>
-                        <td>${o.sizing?.value || o.lots || '-'}</td>
+                        <td><span class="badge ${(o.action || '').toLowerCase().includes('buy') ? 'badge-buy' : 'badge-sell'}">${o.action || '-'}</span></td>
+                        <td>${lots}</td>
                         <td>${o.openPrice || '-'}</td>
                         <td>${o.tp || '-'}</td>
                         <td>${o.sl || '-'}</td>
                         <td>${formatDateTime(o.openTime)}</td>
                     </tr>
-                `).join('');
+                    `;
+                }).join('');
             } else {
                 tbody.innerHTML = emptyRow(7, 'ไม่มี Open Orders');
             }
         } catch (e) {
+            console.error('loadOpenOrders error:', e);
             tbody.innerHTML = emptyRow(7, 'เกิดข้อผิดพลาด');
         }
     }
@@ -315,38 +344,49 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== History ==========
     async function loadHistory(accountId) {
         const tbody = document.getElementById('history-body');
-        tbody.innerHTML = loadingRow(10);
+        tbody.innerHTML = loadingRow(11);
+        const key = String(accountId);
 
         try {
-            const history = historyCache[accountId] || [];
+            let history = historyCache[key];
+            if (!history || history.length === 0) {
+                const result = await MyfxbookAPI.getHistory(accountId);
+                console.log('get-history response:', result);
+                if (result.error === false && result.history) {
+                    history = result.history;
+                    historyCache[key] = history;
+                } else {
+                    history = [];
+                }
+            }
+
             if (history.length > 0) {
                 const trades = history.slice(-100).reverse();
-                tbody.innerHTML = trades.map(t => `
+                tbody.innerHTML = trades.map(t => {
+                    const lots = t.sizing ? t.sizing.value : (t.lots || '-');
+                    const profit = parseFloat(t.profit) || 0;
+                    const pips = parseFloat(t.pips) || 0;
+                    return `
                     <tr>
                         <td><strong>${t.symbol || '-'}</strong></td>
-                        <td><span class="badge ${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
-                        <td>${t.sizing?.value || t.lots || '-'}</td>
+                        <td><span class="badge ${(t.action || '').toLowerCase().includes('buy') ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
+                        <td>${lots}</td>
                         <td>${t.openPrice || '-'}</td>
                         <td>${t.closePrice || '-'}</td>
                         <td>${t.tp || '-'}</td>
                         <td>${t.sl || '-'}</td>
-                        <td class="${parseFloat(t.profit) >= 0 ? 'positive' : 'negative'}">${formatCurrency(parseFloat(t.profit) || 0)}</td>
-                        <td class="${parseFloat(t.pips) >= 0 ? 'positive' : 'negative'}">${t.pips || '0'}</td>
+                        <td class="${profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(profit)}</td>
+                        <td class="${pips >= 0 ? 'positive' : 'negative'}">${pips.toFixed(1)}</td>
                         <td>${formatDateTime(t.openTime)}</td>
                         <td>${formatDateTime(t.closeTime)}</td>
                     </tr>
-                `).join('');
+                    `;
+                }).join('');
             } else {
-                // Try loading fresh
-                const result = await MyfxbookAPI.getHistory(accountId);
-                if (result.error === false && result.history && result.history.length > 0) {
-                    historyCache[accountId] = result.history;
-                    loadHistory(accountId);
-                    return;
-                }
                 tbody.innerHTML = emptyRow(11, 'ไม่มีประวัติการเทรด');
             }
         } catch (e) {
+            console.error('loadHistory error:', e);
             tbody.innerHTML = emptyRow(11, 'เกิดข้อผิดพลาด');
         }
     }
@@ -391,6 +431,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.getDailyGain(accountId, start, end);
+            console.log('get-daily-gain response:', result);
+
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
                 let cumulative = 0;
                 const rows = result.dailyGain.slice().reverse();
@@ -409,6 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.innerHTML = emptyRow(3, 'ไม่มีข้อมูล');
             }
         } catch (e) {
+            console.error('loadDailyGain error:', e);
             tbody.innerHTML = emptyRow(3, 'เกิดข้อผิดพลาด');
         }
     }
@@ -420,6 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.getDataDaily(accountId, start, end);
+            console.log('get-data-daily response:', result);
+
             if (result.error === false && result.dataDaily && result.dataDaily.length > 0) {
                 const rows = result.dataDaily.slice().reverse();
                 tbody.innerHTML = rows.map(d => `
@@ -436,6 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.innerHTML = emptyRow(6, 'ไม่มีข้อมูล');
             }
         } catch (e) {
+            console.error('loadDataDaily error:', e);
             tbody.innerHTML = emptyRow(6, 'เกิดข้อผิดพลาด');
         }
     }
@@ -443,9 +489,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== Gain ==========
     async function loadGain(accountId, start, end) {
         const container = document.getElementById('gain-data');
+        container.innerHTML = '<div class="gain-display"><div class="gain-label"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</div></div>';
 
         try {
             const result = await MyfxbookAPI.getGain(accountId, start, end);
+            console.log('get-gain response:', result);
+
             if (result.error === false && result.value !== undefined) {
                 const val = parseFloat(result.value) || 0;
                 container.innerHTML = `
@@ -458,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 container.innerHTML = '<div class="gain-display"><div class="gain-label">ไม่มีข้อมูล</div></div>';
             }
         } catch (e) {
+            console.error('loadGain error:', e);
             container.innerHTML = '<div class="gain-display"><div class="gain-label">เกิดข้อผิดพลาด</div></div>';
         }
     }
@@ -469,6 +519,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.getCommunityOutlook();
+            console.log('get-community-outlook response:', result);
+
             if (result.error === false && result.symbols) {
                 const symbols = result.symbols.slice(0, 12);
                 container.innerHTML = `
@@ -500,6 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 container.innerHTML = '<div class="loading-state">ไม่สามารถโหลด Community Outlook</div>';
             }
         } catch (e) {
+            console.error('loadCommunityOutlook error:', e);
             container.innerHTML = '<div class="loading-state">เกิดข้อผิดพลาด</div>';
         }
     }
@@ -523,6 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!str) return '-';
         try {
             const d = new Date(str);
+            if (isNaN(d.getTime())) return str;
             return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
                    d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
         } catch { return str; }
