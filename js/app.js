@@ -1,5 +1,5 @@
 /**
- * WebFX - Myfxbook Dashboard Application
+ * WebFX - Myfxbook Dashboard Application (Myfxbook-style)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,148 +10,105 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginError = document.getElementById('login-error');
     const userEmail = document.getElementById('user-email');
     const btnLogout = document.getElementById('btn-logout');
-    const accountSelect = document.getElementById('account-select');
     const btnRefresh = document.getElementById('btn-refresh');
+    const accountSelect = document.getElementById('account-select');
     const loading = document.getElementById('loading');
-    const accountOverview = document.getElementById('account-overview');
-    const tabsSection = document.getElementById('tabs-section');
+    const mainContent = document.getElementById('main-content');
 
     // State
     let accounts = [];
     let selectedAccount = null;
-    let equityChart = null;
-    let dailyGainChart = null;
-    let cumulativeGainChart = null;
-    let currentDateStart = null;
-    let currentDateEnd = null;
+    let growthChart = null;
+    let hourlyChart = null;
+    let weekdayChart = null;
+    let currentPeriodDays = 90;
+
+    // Chart.js dark theme defaults
+    Chart.defaults.color = '#a0aec0';
+    Chart.defaults.borderColor = 'rgba(45,55,72,0.5)';
 
     // ========== Initialize ==========
     init();
 
     function init() {
-        // Check for existing session
         if (MyfxbookAPI.restoreSession()) {
             showDashboard();
             loadAccounts();
         }
 
-        // Set default date range (30 days)
-        initDateRange(30);
-
-        // Event Listeners
         loginForm.addEventListener('submit', handleLogin);
         btnLogout.addEventListener('click', handleLogout);
-        accountSelect.addEventListener('change', handleAccountChange);
         btnRefresh.addEventListener('click', handleRefresh);
+        accountSelect.addEventListener('change', handleAccountChange);
 
-        // Date range
-        document.getElementById('btn-apply-date').addEventListener('click', handleDateChange);
-        document.querySelectorAll('.preset-btn').forEach(btn => {
+        // Period buttons
+        document.querySelectorAll('.period-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const days = parseInt(e.target.dataset.days);
-                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
-                initDateRange(days);
-                handleDateChange();
+                currentPeriodDays = parseInt(e.target.dataset.days);
+                if (selectedAccount) loadGrowthChart(selectedAccount.id);
             });
         });
 
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.tab).classList.add('active');
+            });
         });
-    }
-
-    function initDateRange(days) {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(start.getDate() - days);
-
-        currentDateStart = start;
-        currentDateEnd = end;
-
-        document.getElementById('date-start').value = formatDateAPI(start);
-        document.getElementById('date-end').value = formatDateAPI(end);
-    }
-
-    function handleDateChange() {
-        const startVal = document.getElementById('date-start').value;
-        const endVal = document.getElementById('date-end').value;
-
-        if (startVal && endVal) {
-            currentDateStart = new Date(startVal);
-            currentDateEnd = new Date(endVal);
-
-            const accountId = accountSelect.value;
-            if (accountId) {
-                loadCharts(accountId);
-                loadDailyGain(accountId);
-            }
-        }
     }
 
     // ========== Login ==========
     async function handleLogin(e) {
         e.preventDefault();
-
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
         const submitBtn = loginForm.querySelector('button[type="submit"]');
 
-        // UI state
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังเข้าสู่ระบบ...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
         hideError();
 
         try {
             const result = await MyfxbookAPI.login(email, password);
-
             if (result.error === false) {
                 showDashboard();
                 loadAccounts();
             } else {
-                showError(result.message || 'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบอีเมลและรหัสผ่าน');
+                showError(result.message || 'Login failed. Check your credentials.');
             }
         } catch (error) {
-            showError('ไม่สามารถเชื่อมต่อกับ Myfxbook ได้ กรุณาลองใหม่อีกครั้ง');
-            console.error('Login error:', error);
+            showError('Cannot connect to Myfxbook. Please try again.');
         } finally {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ';
+            submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
         }
     }
 
-    // ========== Logout ==========
     async function handleLogout() {
-        try {
-            await MyfxbookAPI.logout();
-        } catch (error) {
-            console.error('Logout error:', error);
-        }
+        try { await MyfxbookAPI.logout(); } catch(e) {}
         showLogin();
     }
 
     // ========== Load Accounts ==========
     async function loadAccounts() {
         showLoading(true);
-
         try {
             const result = await MyfxbookAPI.getMyAccounts();
-
             if (result.error === false && result.accounts) {
                 accounts = result.accounts;
                 populateAccountSelect(accounts);
-
-                // Auto-select first account
                 if (accounts.length > 0) {
                     accountSelect.value = accounts[0].id;
                     handleAccountChange();
                 }
             } else {
-                // Session expired
                 if (result.message && result.message.includes('session')) {
                     showLogin();
-                    showError('Session หมดอายุ กรุณาเข้าสู่ระบบใหม่');
                 }
             }
         } catch (error) {
@@ -161,392 +118,436 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ========== Account Selection ==========
-    function populateAccountSelect(accounts) {
-        accountSelect.innerHTML = '<option value="">-- เลือกบัญชี --</option>';
-        accounts.forEach(acc => {
-            const option = document.createElement('option');
-            option.value = acc.id;
-            option.textContent = `${acc.name} (${acc.server || 'N/A'}) - ${acc.currency || 'USD'}`;
-            accountSelect.appendChild(option);
+    function populateAccountSelect(accs) {
+        accountSelect.innerHTML = '<option value="">-- Select Account --</option>';
+        accs.forEach(acc => {
+            const opt = document.createElement('option');
+            opt.value = acc.id;
+            opt.textContent = `${acc.name} (${acc.server || 'N/A'})`;
+            accountSelect.appendChild(opt);
         });
     }
 
     async function handleAccountChange() {
         const accountId = accountSelect.value;
-        if (!accountId) {
-            accountOverview.style.display = 'none';
-            tabsSection.style.display = 'none';
-            return;
-        }
+        if (!accountId) { mainContent.style.display = 'none'; return; }
 
         selectedAccount = accounts.find(a => a.id == accountId);
-        if (selectedAccount) {
-            displayAccountOverview(selectedAccount);
-            accountOverview.style.display = 'grid';
-            tabsSection.style.display = 'block';
-            document.getElementById('date-range-section').style.display = 'block';
+        if (!selectedAccount) return;
 
-            // Load tab data
-            loadCharts(accountId);
-            loadOpenTrades(accountId);
-            loadHistory(accountId);
-            loadDailyGain(accountId);
-        }
+        mainContent.style.display = 'block';
+        displayAccountInfo(selectedAccount);
+        displayStats(selectedAccount);
+        displayAdvancedStats(selectedAccount);
+
+        // Load async data
+        loadGrowthChart(accountId);
+        loadOpenTrades(accountId);
+        loadHistory(accountId);
+        loadDailyGain(accountId);
+        loadMonthlyData(accountId);
+        loadTradingActivity(accountId);
     }
 
     function handleRefresh() {
-        const btn = document.getElementById('btn-refresh');
-        btn.querySelector('i').classList.add('fa-spin');
-        
+        btnRefresh.querySelector('i').classList.add('fa-spin');
         loadAccounts().finally(() => {
-            setTimeout(() => {
-                btn.querySelector('i').classList.remove('fa-spin');
-            }, 500);
+            setTimeout(() => btnRefresh.querySelector('i').classList.remove('fa-spin'), 500);
         });
     }
 
-    // ========== Display Account Overview ==========
-    function displayAccountOverview(account) {
-        const balance = parseFloat(account.balance) || 0;
-        const equity = parseFloat(account.equity) || 0;
-        const profit = parseFloat(account.profit) || 0;
-        const gain = parseFloat(account.gain) || 0;
-        const drawdown = parseFloat(account.drawdown) || 0;
-        const trades = account.trades || 0;
-
-        document.getElementById('balance').textContent = formatCurrency(balance);
-        document.getElementById('equity').textContent = formatCurrency(equity);
-
-        const profitEl = document.getElementById('profit');
-        profitEl.textContent = formatCurrency(profit);
-        profitEl.className = `card-value ${profit >= 0 ? 'positive' : 'negative'}`;
-
-        const gainEl = document.getElementById('gain');
-        gainEl.textContent = `${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%`;
-        gainEl.className = `card-value ${gain >= 0 ? 'positive' : 'negative'}`;
-
-        const drawdownEl = document.getElementById('drawdown');
-        drawdownEl.textContent = `${drawdown.toFixed(2)}%`;
-        drawdownEl.className = 'card-value negative';
-
-        document.getElementById('trades-count').textContent = trades.toLocaleString();
+    // ========== Display Account Info ==========
+    function displayAccountInfo(acc) {
+        document.getElementById('info-broker').textContent = acc.broker || '-';
+        document.getElementById('info-leverage').textContent = acc.leverage ? `1:${acc.leverage}` : '-';
+        document.getElementById('info-type').textContent = acc.demo ? 'Demo' : 'Real';
+        document.getElementById('info-currency').textContent = acc.currency || 'USD';
+        userEmail.textContent = localStorage.getItem('myfxbook_email') || '';
     }
 
-    // ========== Load Open Trades ==========
-    async function loadOpenTrades(accountId) {
-        const tbody = document.getElementById('open-trades-body');
-        tbody.innerHTML = '<tr><td colspan="8" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
+    // ========== Display Stats ==========
+    function displayStats(acc) {
+        const gain = parseFloat(acc.gain) || 0;
+        const profit = parseFloat(acc.profit) || 0;
+        const balance = parseFloat(acc.balance) || 0;
+        const equity = parseFloat(acc.equity) || 0;
+        const drawdown = parseFloat(acc.drawdown) || 0;
+        const daily = parseFloat(acc.daily) || 0;
+        const monthly = parseFloat(acc.monthly) || 0;
+        const pips = parseFloat(acc.pips) || 0;
 
-        try {
-            const result = await MyfxbookAPI.getOpenTrades(accountId);
+        setStatValue('stat-gain', `${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%`, gain);
+        setStatValue('stat-profit', `$${profit.toFixed(2)}`, profit);
+        setStatValue('stat-balance', `$${balance.toLocaleString()}`, null);
+        setStatValue('stat-equity', `$${equity.toLocaleString()}`, null);
+        setStatValue('stat-drawdown', `${drawdown.toFixed(2)}%`, -drawdown);
+        setStatValue('stat-total-trades', acc.trades || '0', null);
+        setStatValue('stat-pips', pips.toFixed(1), pips);
+        setStatValue('stat-daily', `${daily >= 0 ? '+' : ''}${daily.toFixed(2)}%`, daily);
+        setStatValue('stat-monthly', `${monthly >= 0 ? '+' : ''}${monthly.toFixed(2)}%`, monthly);
+    }
 
-            if (result.error === false && result.openTrades && result.openTrades.length > 0) {
-                tbody.innerHTML = result.openTrades.map(trade => `
-                    <tr>
-                        <td><strong>${trade.symbol || '-'}</strong></td>
-                        <td><span class="${trade.action === 'Buy' ? 'buy-badge' : 'sell-badge'}">${trade.action || '-'}</span></td>
-                        <td>${trade.sizing && trade.sizing.value ? trade.sizing.value : (trade.lots || '-')}</td>
-                        <td>${trade.openPrice || '-'}</td>
-                        <td>${trade.currentPrice || '-'}</td>
-                        <td class="${parseFloat(trade.profit) >= 0 ? 'positive' : 'negative'}">
-                            ${formatCurrency(parseFloat(trade.profit) || 0)}
-                        </td>
-                        <td class="${parseFloat(trade.pips) >= 0 ? 'positive' : 'negative'}">
-                            ${trade.pips || '0'}
-                        </td>
-                        <td>${formatDate(trade.openTime)}</td>
-                    </tr>
-                `).join('');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="no-data">ไม่มี Open Trades ในขณะนี้</td></tr>';
-            }
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="8" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            console.error('Open trades error:', error);
+    function setStatValue(id, text, colorValue) {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = 'stat-value';
+        if (colorValue !== null) {
+            el.classList.add(colorValue >= 0 ? 'positive' : 'negative');
         }
     }
 
-    // ========== Load History ==========
-    async function loadHistory(accountId) {
-        const tbody = document.getElementById('history-body');
-        tbody.innerHTML = '<tr><td colspan="9" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
+    // ========== Advanced Stats ==========
+    function displayAdvancedStats(acc) {
+        const wonTrades = parseInt(acc.wonTrades) || 0;
+        const lostTrades = parseInt(acc.lostTrades) || 0;
+        const totalTrades = wonTrades + lostTrades;
+        const winRate = totalTrades > 0 ? ((wonTrades / totalTrades) * 100).toFixed(1) : '0.0';
 
-        try {
-            const result = await MyfxbookAPI.getHistory(accountId);
-
-            if (result.error === false && result.history && result.history.length > 0) {
-                // Show latest 50 trades
-                const trades = result.history.slice(-50).reverse();
-                tbody.innerHTML = trades.map(trade => `
-                    <tr>
-                        <td><strong>${trade.symbol || '-'}</strong></td>
-                        <td><span class="${trade.action === 'Buy' ? 'buy-badge' : 'sell-badge'}">${trade.action || '-'}</span></td>
-                        <td>${trade.sizing && trade.sizing.value ? trade.sizing.value : (trade.lots || '-')}</td>
-                        <td>${trade.openPrice || '-'}</td>
-                        <td>${trade.closePrice || '-'}</td>
-                        <td class="${parseFloat(trade.profit) >= 0 ? 'positive' : 'negative'}">
-                            ${formatCurrency(parseFloat(trade.profit) || 0)}
-                        </td>
-                        <td class="${parseFloat(trade.pips) >= 0 ? 'positive' : 'negative'}">
-                            ${trade.pips || '0'}
-                        </td>
-                        <td>${formatDate(trade.openTime)}</td>
-                        <td>${formatDate(trade.closeTime)}</td>
-                    </tr>
-                `).join('');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="9" class="no-data">ไม่มีข้อมูลประวัติการเทรด</td></tr>';
-            }
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="9" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            console.error('History error:', error);
-        }
+        document.getElementById('adv-winrate').textContent = `${winRate}%`;
+        document.getElementById('adv-profit-factor').textContent = acc.profitFactor || '-';
+        document.getElementById('adv-avg-win').textContent = acc.avgWin ? `$${parseFloat(acc.avgWin).toFixed(2)}` : '-';
+        document.getElementById('adv-avg-loss').textContent = acc.avgLoss ? `$${parseFloat(acc.avgLoss).toFixed(2)}` : '-';
+        document.getElementById('adv-best-trade').textContent = acc.bestTrade ? `$${parseFloat(acc.bestTrade).toFixed(2)}` : '-';
+        document.getElementById('adv-worst-trade').textContent = acc.worstTrade ? `$${parseFloat(acc.worstTrade).toFixed(2)}` : '-';
+        document.getElementById('adv-max-dd').textContent = acc.drawdown ? `${parseFloat(acc.drawdown).toFixed(2)}%` : '-';
+        document.getElementById('adv-avg-length').textContent = acc.avgTradeLength || '-';
+        document.getElementById('adv-expectancy').textContent = acc.expectancy ? `${parseFloat(acc.expectancy).toFixed(2)} pips` : '-';
+        document.getElementById('adv-longs-won').textContent = acc.longsWon ? `${acc.longsWon}%` : '-';
+        document.getElementById('adv-shorts-won').textContent = acc.shortsWon ? `${acc.shortsWon}%` : '-';
+        document.getElementById('adv-commission').textContent = acc.commission ? `$${parseFloat(acc.commission).toFixed(2)}` : '-';
+        document.getElementById('adv-deposits').textContent = acc.deposits ? `$${parseFloat(acc.deposits).toLocaleString()}` : '-';
+        document.getElementById('adv-withdrawals').textContent = acc.withdrawals ? `$${parseFloat(acc.withdrawals).toLocaleString()}` : '-';
+        document.getElementById('adv-interest').textContent = acc.interest ? `$${parseFloat(acc.interest).toFixed(2)}` : '-';
+        document.getElementById('adv-highest-bal').textContent = acc.highestBalance ? `$${parseFloat(acc.highestBalance).toLocaleString()}` : '-';
+        document.getElementById('adv-highest-eq').textContent = acc.highestEquity ? `$${parseFloat(acc.highestEquity).toLocaleString()}` : '-';
+        document.getElementById('adv-since').textContent = acc.creationDate ? acc.creationDate.substring(0, 10) : '-';
     }
 
-    // ========== Load Daily Gain ==========
-    async function loadDailyGain(accountId) {
-        const tbody = document.getElementById('daily-gain-body');
-        tbody.innerHTML = '<tr><td colspan="3" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
-
+    // ========== Growth Chart ==========
+    async function loadGrowthChart(accountId) {
         try {
-            const startStr = formatDateAPI(currentDateStart);
-            const endStr = formatDateAPI(currentDateEnd);
+            const end = new Date();
+            const start = new Date();
+            if (currentPeriodDays > 0) {
+                start.setDate(start.getDate() - currentPeriodDays);
+            } else {
+                start.setFullYear(start.getFullYear() - 5);
+            }
 
-            const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
+            const result = await MyfxbookAPI.getDailyGain(accountId, formatDateAPI(start), formatDateAPI(end));
 
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
-                // เรียงจากเก่า -> ใหม่ ก่อนคำนวณสะสม (ลำดับเวลาถูกต้อง)
-                const gainsAsc = result.dailyGain;
-                let cumulativeGain = 0;
-
-                // คำนวณ cumulative จากเก่าไปใหม่ก่อน
-                const gainsWithCumulative = gainsAsc.map(day => {
-                    const dailyProfit = parseFloat(day.value) || 0;
-                    cumulativeGain += dailyProfit;
-                    return { ...day, dailyProfit, cumulativeGain };
-                });
-
-                // แสดงในตาราง: ใหม่สุดอยู่บน
-                const gainsDesc = [...gainsWithCumulative].reverse();
-
-                tbody.innerHTML = gainsDesc.map(day => {
-                    return `
-                        <tr>
-                            <td>${day.date || '-'}</td>
-                            <td class="${day.dailyProfit >= 0 ? 'positive' : 'negative'}">
-                                ${day.dailyProfit >= 0 ? '+' : ''}${day.dailyProfit.toFixed(4)}%
-                            </td>
-                            <td class="${day.cumulativeGain >= 0 ? 'positive' : 'negative'}">
-                                ${day.cumulativeGain >= 0 ? '+' : ''}${day.cumulativeGain.toFixed(4)}%
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="3" class="no-data">ไม่มีข้อมูลกำไรรายวัน</td></tr>';
-            }
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="3" class="no-data">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            console.error('Daily gain error:', error);
-        }
-    }
-
-    // ========== Load Charts ==========
-    async function loadCharts(accountId) {
-        try {
-            const startStr = formatDateAPI(currentDateStart);
-            const endStr = formatDateAPI(currentDateEnd);
-
-            const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
-
-            if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
-                // เรียงจากเก่า -> ใหม่ (ลำดับเวลาถูกต้องสำหรับกราฟ)
                 const gains = result.dailyGain;
                 const labels = gains.map(d => {
                     if (!d.date) return '';
-                    // แสดงวันที่แบบ DD/MM
                     const parts = d.date.split('-');
-                    if (parts.length >= 3) return parts[2] + '/' + parts[1];
-                    return d.date.substring(5);
+                    return parts.length >= 3 ? `${parts[2]}/${parts[1]}` : d.date.substring(5);
                 });
-                const dailyValues = gains.map(d => parseFloat(d.value) || 0);
 
-                // คำนวณกำไรสะสม (compound)
                 let cumulative = 0;
-                const cumulativeValues = dailyValues.map(v => {
-                    cumulative += v;
+                const cumulativeValues = gains.map(d => {
+                    cumulative += (parseFloat(d.value) || 0);
                     return parseFloat(cumulative.toFixed(4));
                 });
 
-                // Equity Curve: คำนวณจาก deposit (balance - profit ปัจจุบัน) + cumulative %
-                const balance = parseFloat(selectedAccount.balance) || 0;
-                const totalProfit = parseFloat(selectedAccount.profit) || 0;
-                const deposit = balance - totalProfit; // ยอดฝากเดิม
-                const baseEquity = deposit > 0 ? deposit : balance;
-
-                // สร้าง equity curve จากข้อมูล daily gain
-                const equityValues = cumulativeValues.map(c => {
-                    return parseFloat((baseEquity * (1 + c / 100)).toFixed(2));
-                });
-
-                renderEquityChart(labels, equityValues);
-                renderDailyGainChart(labels, dailyValues);
-                renderCumulativeGainChart(labels, cumulativeValues);
+                renderGrowthChart(labels, cumulativeValues);
             }
         } catch (error) {
-            console.error('Chart load error:', error);
+            console.error('Growth chart error:', error);
         }
     }
 
-    // ========== Render Charts ==========
-    function renderEquityChart(labels, data) {
-        const ctx = document.getElementById('equityChart').getContext('2d');
-        if (equityChart) equityChart.destroy();
+    function renderGrowthChart(labels, data) {
+        const ctx = document.getElementById('growthChart').getContext('2d');
+        if (growthChart) growthChart.destroy();
 
-        equityChart = new Chart(ctx, {
+        const lastVal = data[data.length - 1] || 0;
+        const color = lastVal >= 0 ? '#00d4aa' : '#e74c3c';
+        const bgColor = lastVal >= 0 ? 'rgba(0,212,170,0.08)' : 'rgba(231,76,60,0.08)';
+
+        growthChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
+                labels,
                 datasets: [{
-                    label: 'Equity ($)',
-                    data: data,
-                    borderColor: '#1a73e8',
-                    backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                    data,
+                    borderColor: color,
+                    backgroundColor: bgColor,
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: 2,
-                    pointHoverRadius: 5
+                    tension: 0.2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointHoverBackgroundColor: color
                 }]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: (ctx) => `$${ctx.parsed.y.toLocaleString()}`
+                            label: (ctx) => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`
                         }
                     }
                 },
                 scales: {
+                    x: {
+                        grid: { color: 'rgba(45,55,72,0.3)' },
+                        ticks: { maxTicksLimit: 10, font: { size: 11 } }
+                    },
                     y: {
+                        grid: { color: 'rgba(45,55,72,0.3)' },
                         ticks: {
-                            callback: (val) => '$' + val.toLocaleString()
+                            font: { size: 11 },
+                            callback: (val) => val.toFixed(1) + '%'
                         }
                     }
+                },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+    }
+
+    // ========== Monthly Return ==========
+    async function loadMonthlyData(accountId) {
+        try {
+            const end = new Date();
+            const start = new Date();
+            start.setFullYear(start.getFullYear() - 3);
+
+            const result = await MyfxbookAPI.getDailyGain(accountId, formatDateAPI(start), formatDateAPI(end));
+
+            if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
+                const monthlyData = {};
+
+                result.dailyGain.forEach(day => {
+                    if (!day.date) return;
+                    const parts = day.date.split('-');
+                    if (parts.length < 3) return;
+                    const year = parts[0];
+                    const month = parseInt(parts[1]) - 1;
+                    const val = parseFloat(day.value) || 0;
+
+                    if (!monthlyData[year]) monthlyData[year] = new Array(12).fill(0);
+                    monthlyData[year][month] += val;
+                });
+
+                renderMonthlyTable(monthlyData);
+            }
+        } catch (error) {
+            console.error('Monthly data error:', error);
+        }
+    }
+
+    function renderMonthlyTable(data) {
+        const tbody = document.getElementById('monthly-body');
+        const years = Object.keys(data).sort().reverse();
+
+        tbody.innerHTML = years.map(year => {
+            const months = data[year];
+            const total = months.reduce((sum, v) => sum + v, 0);
+
+            const cells = months.map(v => {
+                const cls = v > 0 ? 'positive' : v < 0 ? 'negative' : '';
+                const display = v !== 0 ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '-';
+                return `<td class="${cls}">${display}</td>`;
+            }).join('');
+
+            const totalCls = total > 0 ? 'positive total-cell' : total < 0 ? 'negative total-cell' : 'total-cell';
+            return `<tr><td class="year-cell">${year}</td>${cells}<td class="${totalCls}">${total >= 0 ? '+' : ''}${total.toFixed(2)}%</td></tr>`;
+        }).join('');
+    }
+
+    // ========== Trading Activity ==========
+    async function loadTradingActivity(accountId) {
+        try {
+            const result = await MyfxbookAPI.getHistory(accountId);
+
+            if (result.error === false && result.history && result.history.length > 0) {
+                const hourData = new Array(24).fill(0);
+                const dayData = new Array(7).fill(0);
+
+                result.history.forEach(trade => {
+                    if (trade.openTime) {
+                        try {
+                            const date = new Date(trade.openTime);
+                            hourData[date.getHours()]++;
+                            dayData[date.getDay()]++;
+                        } catch(e) {}
+                    }
+                });
+
+                renderHourlyChart(hourData);
+                renderWeekdayChart(dayData);
+            }
+        } catch (error) {
+            console.error('Trading activity error:', error);
+        }
+    }
+
+    function renderHourlyChart(data) {
+        const ctx = document.getElementById('hourlyChart').getContext('2d');
+        if (hourlyChart) hourlyChart.destroy();
+
+        const labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+
+        hourlyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: 'rgba(0,212,170,0.6)',
+                    borderRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 12 } },
+                    y: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { font: { size: 10 } } }
                 }
             }
         });
     }
 
-    function renderDailyGainChart(labels, data) {
-        const ctx = document.getElementById('dailyGainChart').getContext('2d');
-        if (dailyGainChart) dailyGainChart.destroy();
+    function renderWeekdayChart(data) {
+        const ctx = document.getElementById('weekdayChart').getContext('2d');
+        if (weekdayChart) weekdayChart.destroy();
 
-        const colors = data.map(v => v >= 0 ? '#0f9d58' : '#ea4335');
+        const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-        dailyGainChart = new Chart(ctx, {
+        weekdayChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
+                labels,
                 datasets: [{
-                    label: 'Daily Gain (%)',
-                    data: data,
-                    backgroundColor: colors,
+                    data,
+                    backgroundColor: 'rgba(0,212,170,0.6)',
                     borderRadius: 3
                 }]
             },
             options: {
                 responsive: true,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(4)}%`
-                        }
-                    }
-                },
+                plugins: { legend: { display: false } },
                 scales: {
-                    y: {
-                        ticks: {
-                            callback: (val) => val.toFixed(2) + '%'
-                        }
-                    }
+                    x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                    y: { grid: { color: 'rgba(45,55,72,0.3)' }, ticks: { font: { size: 10 } } }
                 }
             }
         });
     }
 
-    function renderCumulativeGainChart(labels, data) {
-        const ctx = document.getElementById('cumulativeGainChart').getContext('2d');
-        if (cumulativeGainChart) cumulativeGainChart.destroy();
+    // ========== Open Trades ==========
+    async function loadOpenTrades(accountId) {
+        const tbody = document.getElementById('open-trades-body');
+        tbody.innerHTML = '<tr><td colspan="8" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
-        const lastValue = data[data.length - 1] || 0;
-        const lineColor = lastValue >= 0 ? '#0f9d58' : '#ea4335';
-        const bgColor = lastValue >= 0 ? 'rgba(15, 157, 88, 0.1)' : 'rgba(234, 67, 53, 0.1)';
-
-        cumulativeGainChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Cumulative Gain (%)',
-                    data: data,
-                    borderColor: lineColor,
-                    backgroundColor: bgColor,
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 2,
-                    pointHoverRadius: 5
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(4)}%`
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        ticks: {
-                            callback: (val) => val.toFixed(2) + '%'
-                        }
-                    }
-                }
+        try {
+            const result = await MyfxbookAPI.getOpenTrades(accountId);
+            if (result.error === false && result.openTrades && result.openTrades.length > 0) {
+                tbody.innerHTML = result.openTrades.map(t => `
+                    <tr>
+                        <td><strong>${t.symbol || '-'}</strong></td>
+                        <td><span class="${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
+                        <td>${t.sizing && t.sizing.value ? t.sizing.value : (t.lots || '-')}</td>
+                        <td>${t.openPrice || '-'}</td>
+                        <td>${t.currentPrice || '-'}</td>
+                        <td class="${parseFloat(t.profit) >= 0 ? 'positive' : 'negative'}">${fmtCurrency(parseFloat(t.profit) || 0)}</td>
+                        <td class="${parseFloat(t.pips) >= 0 ? 'positive' : 'negative'}">${t.pips || '0'}</td>
+                        <td>${fmtDate(t.openTime)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty">No open trades</td></tr>';
             }
-        });
+        } catch (error) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">Error loading data</td></tr>';
+        }
     }
 
-    // ========== Tab Switching ==========
-    function switchTab(tabId) {
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tabId);
-        });
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.toggle('active', content.id === tabId);
-        });
+    // ========== History ==========
+    async function loadHistory(accountId) {
+        const tbody = document.getElementById('history-body');
+        tbody.innerHTML = '<tr><td colspan="9" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const result = await MyfxbookAPI.getHistory(accountId);
+            if (result.error === false && result.history && result.history.length > 0) {
+                const trades = result.history.slice(-100).reverse();
+                tbody.innerHTML = trades.map(t => `
+                    <tr>
+                        <td><strong>${t.symbol || '-'}</strong></td>
+                        <td><span class="${t.action === 'Buy' ? 'badge-buy' : 'badge-sell'}">${t.action || '-'}</span></td>
+                        <td>${t.sizing && t.sizing.value ? t.sizing.value : (t.lots || '-')}</td>
+                        <td>${t.openPrice || '-'}</td>
+                        <td>${t.closePrice || '-'}</td>
+                        <td class="${parseFloat(t.profit) >= 0 ? 'positive' : 'negative'}">${fmtCurrency(parseFloat(t.profit) || 0)}</td>
+                        <td class="${parseFloat(t.pips) >= 0 ? 'positive' : 'negative'}">${t.pips || '0'}</td>
+                        <td>${fmtDate(t.openTime)}</td>
+                        <td>${fmtDate(t.closeTime)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty">No trade history</td></tr>';
+            }
+        } catch (error) {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty">Error loading data</td></tr>';
+        }
+    }
+
+    // ========== Daily Gain ==========
+    async function loadDailyGain(accountId) {
+        const tbody = document.getElementById('daily-gain-body');
+        tbody.innerHTML = '<tr><td colspan="3" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(start.getDate() - 30);
+
+            const result = await MyfxbookAPI.getDailyGain(accountId, formatDateAPI(start), formatDateAPI(end));
+
+            if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
+                const gainsAsc = result.dailyGain;
+                let cumulative = 0;
+
+                const withCumulative = gainsAsc.map(day => {
+                    const val = parseFloat(day.value) || 0;
+                    cumulative += val;
+                    return { ...day, val, cumulative };
+                });
+
+                const desc = [...withCumulative].reverse();
+
+                tbody.innerHTML = desc.map(d => `
+                    <tr>
+                        <td>${d.date || '-'}</td>
+                        <td class="${d.val >= 0 ? 'positive' : 'negative'}">${d.val >= 0 ? '+' : ''}${d.val.toFixed(4)}%</td>
+                        <td class="${d.cumulative >= 0 ? 'positive' : 'negative'}">${d.cumulative >= 0 ? '+' : ''}${d.cumulative.toFixed(4)}%</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="3" class="empty">No daily data</td></tr>';
+            }
+        } catch (error) {
+            tbody.innerHTML = '<tr><td colspan="3" class="empty">Error loading data</td></tr>';
+        }
     }
 
     // ========== UI Helpers ==========
     function showDashboard() {
         loginSection.style.display = 'none';
         dashboardSection.style.display = 'block';
-        const email = localStorage.getItem('myfxbook_email') || '';
-        userEmail.textContent = email;
     }
 
     function showLogin() {
         loginSection.style.display = 'flex';
         dashboardSection.style.display = 'none';
-        accountOverview.style.display = 'none';
-        tabsSection.style.display = 'none';
+        mainContent.style.display = 'none';
         loginForm.reset();
     }
 
@@ -554,8 +555,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loading.style.display = show ? 'block' : 'none';
     }
 
-    function showError(message) {
-        loginError.textContent = message;
+    function showError(msg) {
+        loginError.textContent = msg;
         loginError.classList.add('show');
     }
 
@@ -564,34 +565,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ========== Formatters ==========
-    function formatCurrency(value) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 2
-        }).format(value);
+    function fmtCurrency(val) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
     }
 
-    function formatDate(dateStr) {
-        if (!dateStr) return '-';
+    function fmtDate(str) {
+        if (!str) return '-';
         try {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('th-TH', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch {
-            return dateStr;
-        }
+            const d = new Date(str);
+            return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+        } catch { return str; }
     }
 
     function formatDateAPI(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     }
 });
