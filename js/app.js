@@ -182,10 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const drawdown = num(acc.drawdown);
             const trades = num(acc.trades);
             const pips = num(acc.pips);
-            const won = num(acc.wonTrades);
-            const lost = num(acc.lostTrades);
-            const total = won + lost;
-            const winRate = total > 0 ? ((won / total) * 100).toFixed(1) : '0.0';
+            const winRate = getWinRate(acc);
 
             return `
                 <div class="account-card" data-id="${acc.id}">
@@ -219,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="account-card-stat">
                             <span class="label">Win Rate</span>
-                            <span class="value">${winRate}%</span>
+                            <span class="value">${winRate.toFixed(1)}%</span>
                         </div>
                         <div class="account-card-stat">
                             <span class="label">Trades</span>
@@ -311,10 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const drawdown = num(acc.drawdown);
         const trades = num(acc.trades);
         const pips = num(acc.pips);
-        const won = num(acc.wonTrades);
-        const lost = num(acc.lostTrades);
-        const total = won + lost;
-        const winRate = total > 0 ? ((won/total)*100) : 0;
+        const winRate = getWinRate(acc);
 
         setStat('stat-gain', `${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%`, gain);
         setStat('stat-profit', fmtMoney(profit), profit);
@@ -326,19 +320,41 @@ document.addEventListener('DOMContentLoaded', () => {
         setStat('stat-winrate', `${winRate.toFixed(1)}%`, winRate >= 50 ? 1 : -1);
     }
 
+    // คำนวณ Win Rate จากหลายแหล่งข้อมูล
+    function getWinRate(acc) {
+        // วิธี 1: ใช้ wonTrades / lostTrades โดยตรง
+        const won = num(acc.wonTrades);
+        const lost = num(acc.lostTrades);
+        if (won + lost > 0) return (won / (won + lost)) * 100;
+
+        // วิธี 2: ใช้ longsWon + shortsWon หารเฉลี่ย
+        const longsWon = num(acc.longsWon);
+        const shortsWon = num(acc.shortsWon);
+        if (longsWon > 0 || shortsWon > 0) {
+            let count = 0, total = 0;
+            if (longsWon > 0) { total += longsWon; count++; }
+            if (shortsWon > 0) { total += shortsWon; count++; }
+            return count > 0 ? total / count : 0;
+        }
+
+        // วิธี 3: ใช้ longPercentage (ถ้ามี)
+        if (acc.winPercentage) return num(acc.winPercentage);
+
+        return 0;
+    }
+
     function displayAdvancedStats(acc) {
-        const won = num(acc.wonTrades), lost = num(acc.lostTrades), total = won + lost;
-        const winRate = total > 0 ? ((won/total)*100).toFixed(1) : '0.0';
-        setText('adv-winrate', `${winRate}%`);
+        const winRate = getWinRate(acc);
+        setText('adv-winrate', `${winRate.toFixed(1)}%`);
         setText('adv-pf', acc.profitFactor || '-');
         setText('adv-expectancy', acc.expectancy ? `${num(acc.expectancy).toFixed(2)} pips` : '-');
         setText('adv-avgwin', acc.avgWin ? fmtMoney(num(acc.avgWin)) : '-');
         setText('adv-avgloss', acc.avgLoss ? fmtMoney(num(acc.avgLoss)) : '-');
         setText('adv-avgpipswin', acc.avgPipsWin ? num(acc.avgPipsWin).toFixed(1) : '-');
         setText('adv-avgpipsloss', acc.avgPipsLoss ? num(acc.avgPipsLoss).toFixed(1) : '-');
-        setText('adv-total', total || acc.trades || '-');
-        setText('adv-won', won || '-');
-        setText('adv-lost', lost || '-');
+        setText('adv-total', acc.trades || '-');
+        setText('adv-won', acc.wonTrades || '-');
+        setText('adv-lost', acc.lostTrades || '-');
         setText('adv-best', acc.bestTrade ? fmtMoney(num(acc.bestTrade)) : '-');
         setText('adv-worst', acc.worstTrade ? fmtMoney(num(acc.worstTrade)) : '-');
         setText('adv-bestpips', acc.bestTradePips ? num(acc.bestTradePips).toFixed(1) : '-');
