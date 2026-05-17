@@ -320,25 +320,44 @@ document.addEventListener('DOMContentLoaded', () => {
         setStat('stat-winrate', `${winRate.toFixed(1)}%`, winRate >= 50 ? 1 : -1);
     }
 
-    // คำนวณ Win Rate จากหลายแหล่งข้อมูล
+    // คำนวณ Win Rate จากหลายแหล่งข้อมูลที่ API ส่งมา
     function getWinRate(acc) {
+        // Log เพื่อ debug
+        console.log('[WIN RATE] Fields:', {
+            wonTrades: acc.wonTrades,
+            lostTrades: acc.lostTrades,
+            longsWon: acc.longsWon,
+            shortsWon: acc.shortsWon,
+            longPercentage: acc.longPercentage,
+            shortPercentage: acc.shortPercentage,
+            wonTradesPercentage: acc.wonTradesPercentage,
+            lostTradesPercentage: acc.lostTradesPercentage
+        });
+
         // วิธี 1: ใช้ wonTrades / lostTrades โดยตรง
         const won = num(acc.wonTrades);
         const lost = num(acc.lostTrades);
         if (won + lost > 0) return (won / (won + lost)) * 100;
 
-        // วิธี 2: ใช้ longsWon + shortsWon หารเฉลี่ย
+        // วิธี 2: ใช้ wonTradesPercentage โดยตรง (ถ้ามี)
+        if (acc.wonTradesPercentage) return num(acc.wonTradesPercentage);
+
+        // วิธี 3: ใช้ longsWon + shortsWon หารเฉลี่ย (เป็น % ของ long/short ที่ชนะ)
         const longsWon = num(acc.longsWon);
         const shortsWon = num(acc.shortsWon);
-        if (longsWon > 0 || shortsWon > 0) {
-            let count = 0, total = 0;
-            if (longsWon > 0) { total += longsWon; count++; }
-            if (shortsWon > 0) { total += shortsWon; count++; }
-            return count > 0 ? total / count : 0;
+        if (longsWon > 0 && shortsWon > 0) {
+            return (longsWon + shortsWon) / 2;
+        } else if (longsWon > 0) {
+            return longsWon;
+        } else if (shortsWon > 0) {
+            return shortsWon;
         }
 
-        // วิธี 3: ใช้ longPercentage (ถ้ามี)
-        if (acc.winPercentage) return num(acc.winPercentage);
+        // วิธี 4: คำนวณจาก history (ถ้าโหลดแล้ว)
+        if (allHistory && allHistory.length > 0) {
+            const wonCount = allHistory.filter(t => num(t.profit) > 0).length;
+            if (allHistory.length > 0) return (wonCount / allHistory.length) * 100;
+        }
 
         return 0;
     }
