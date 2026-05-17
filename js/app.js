@@ -275,20 +275,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
 
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
-                const gains = result.dailyGain.slice(-30).reverse();
+                // เรียงจากเก่า -> ใหม่ ก่อนคำนวณสะสม (ลำดับเวลาถูกต้อง)
+                const gainsAsc = result.dailyGain.slice(-30);
                 let cumulativeGain = 0;
 
-                tbody.innerHTML = gains.map(day => {
+                // คำนวณ cumulative จากเก่าไปใหม่ก่อน
+                const gainsWithCumulative = gainsAsc.map(day => {
                     const dailyProfit = parseFloat(day.value) || 0;
                     cumulativeGain += dailyProfit;
+                    return { ...day, dailyProfit, cumulativeGain };
+                });
+
+                // แสดงในตาราง: ใหม่สุดอยู่บน
+                const gainsDesc = [...gainsWithCumulative].reverse();
+
+                tbody.innerHTML = gainsDesc.map(day => {
                     return `
                         <tr>
                             <td>${day.date || '-'}</td>
-                            <td class="${dailyProfit >= 0 ? 'positive' : 'negative'}">
-                                ${dailyProfit >= 0 ? '+' : ''}${dailyProfit.toFixed(4)}%
+                            <td class="${day.dailyProfit >= 0 ? 'positive' : 'negative'}">
+                                ${day.dailyProfit >= 0 ? '+' : ''}${day.dailyProfit.toFixed(4)}%
                             </td>
-                            <td class="${cumulativeGain >= 0 ? 'positive' : 'negative'}">
-                                ${cumulativeGain >= 0 ? '+' : ''}${cumulativeGain.toFixed(4)}%
+                            <td class="${day.cumulativeGain >= 0 ? 'positive' : 'negative'}">
+                                ${day.cumulativeGain >= 0 ? '+' : ''}${day.cumulativeGain.toFixed(4)}%
                             </td>
                         </tr>
                     `;
@@ -315,21 +324,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
 
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
+                // เรียงจากเก่า -> ใหม่ (ลำดับเวลาถูกต้องสำหรับกราฟ)
                 const gains = result.dailyGain.slice(-30);
-                const labels = gains.map(d => d.date ? d.date.substring(5) : '');
+                const labels = gains.map(d => {
+                    if (!d.date) return '';
+                    // แสดงวันที่แบบ DD/MM
+                    const parts = d.date.split('-');
+                    if (parts.length >= 3) return parts[2] + '/' + parts[1];
+                    return d.date.substring(5);
+                });
                 const dailyValues = gains.map(d => parseFloat(d.value) || 0);
 
-                // Cumulative gain
+                // คำนวณกำไรสะสม (compound)
                 let cumulative = 0;
                 const cumulativeValues = dailyValues.map(v => {
                     cumulative += v;
                     return parseFloat(cumulative.toFixed(4));
                 });
 
-                // Equity simulation (based on balance + cumulative %)
-                const balance = parseFloat(selectedAccount.balance) || 10000;
+                // Equity Curve: คำนวณจาก deposit (balance - profit ปัจจุบัน) + cumulative %
+                const balance = parseFloat(selectedAccount.balance) || 0;
+                const totalProfit = parseFloat(selectedAccount.profit) || 0;
+                const deposit = balance - totalProfit; // ยอดฝากเดิม
+                const baseEquity = deposit > 0 ? deposit : balance;
+
+                // สร้าง equity curve จากข้อมูล daily gain
                 const equityValues = cumulativeValues.map(c => {
-                    return parseFloat((balance * (1 + c / 100)).toFixed(2));
+                    return parseFloat((baseEquity * (1 + c / 100)).toFixed(2));
                 });
 
                 renderEquityChart(labels, equityValues);
