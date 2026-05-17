@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebFX - Stats by Comment</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/stats.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <!-- Top Bar -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <a href="index.html" class="btn btn-icon" title="กลับ Myfxbook Dashboard">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <i class="fas fa-chart-pie topbar-logo"></i>
+            <h1>WebFX Stats</h1>
+        </div>
+        <div class="topbar-right">
+            <span id="backend-status" class="backend-badge offline">
+                <i class="fas fa-circle"></i> Offline
+            </span>
+            <button id="btn-refresh-stats" class="btn btn-icon" title="รีเฟรช">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- Filters -->
+        <div class="date-filter">
+            <div class="date-inputs">
+                <div class="date-field">
+                    <label>Account</label>
+                    <select id="filter-account" class="filter-select">
+                        <option value="">ทุกบัญชี</option>
+                    </select>
+                </div>
+                <div class="date-field">
+                    <label>จาก</label>
+                    <input type="date" id="filter-start">
+                </div>
+                <div class="date-field">
+                    <label>ถึง</label>
+                    <input type="date" id="filter-end">
+                </div>
+                <button id="btn-filter" class="btn btn-primary">
+                    <i class="fas fa-filter"></i> กรอง
+                </button>
+            </div>
+            <div class="quick-dates">
+                <button class="quick-date-btn" data-days="7">7 วัน</button>
+                <button class="quick-date-btn active" data-days="30">30 วัน</button>
+                <button class="quick-date-btn" data-days="90">90 วัน</button>
+                <button class="quick-date-btn" data-days="180">180 วัน</button>
+                <button class="quick-date-btn" data-days="365">1 ปี</button>
+                <button class="quick-date-btn" data-days="0">ทั้งหมด</button>
+            </div>
+        </div>
+
+        <!-- Overall Stats -->
+        <div class="section-header">
+            <h2><i class="fas fa-chart-bar"></i> ภาพรวมทั้งหมด</h2>
+        </div>
+        <div id="overall-stats" class="stats-grid">
+            <div class="loading-state"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</div>
+        </div>
+
+        <!-- Stats by Comment Table -->
+        <div class="section-header" style="margin-top:32px;">
+            <h2><i class="fas fa-tags"></i> สถิติแยกตาม Comment / EA</h2>
+        </div>
+        <div id="comment-stats-table" class="table-wrapper">
+            <div class="loading-state"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</div>
+        </div>
+
+        <!-- Detail Panel (shown when clicking a comment) -->
+        <div id="comment-detail" class="comment-detail" style="display:none;">
+            <div class="section-header">
+                <h2><i class="fas fa-microscope"></i> รายละเอียด: <span id="detail-comment-name"></span></h2>
+                <button id="btn-close-detail" class="btn btn-ghost">
+                    <i class="fas fa-times"></i> ปิด
+                </button>
+            </div>
+            <div id="detail-stats" class="stats-grid"></div>
+            <div id="detail-trades" class="table-wrapper" style="margin-top:16px;"></div>
+        </div>
+    </main>
+
+    <script src="js/trades-api.js"></script>
+    <script src="js/stats-app.js"></script>
+</body>
+</html>
