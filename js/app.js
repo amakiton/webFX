@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let equityChart = null;
     let dailyGainChart = null;
     let cumulativeGainChart = null;
+    let currentDateStart = null;
+    let currentDateEnd = null;
 
     // ========== Initialize ==========
     init();
@@ -33,16 +35,59 @@ document.addEventListener('DOMContentLoaded', () => {
             loadAccounts();
         }
 
+        // Set default date range (30 days)
+        initDateRange(30);
+
         // Event Listeners
         loginForm.addEventListener('submit', handleLogin);
         btnLogout.addEventListener('click', handleLogout);
         accountSelect.addEventListener('change', handleAccountChange);
         btnRefresh.addEventListener('click', handleRefresh);
 
+        // Date range
+        document.getElementById('btn-apply-date').addEventListener('click', handleDateChange);
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const days = parseInt(e.target.dataset.days);
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                initDateRange(days);
+                handleDateChange();
+            });
+        });
+
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
+    }
+
+    function initDateRange(days) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+
+        currentDateStart = start;
+        currentDateEnd = end;
+
+        document.getElementById('date-start').value = formatDateAPI(start);
+        document.getElementById('date-end').value = formatDateAPI(end);
+    }
+
+    function handleDateChange() {
+        const startVal = document.getElementById('date-start').value;
+        const endVal = document.getElementById('date-end').value;
+
+        if (startVal && endVal) {
+            currentDateStart = new Date(startVal);
+            currentDateEnd = new Date(endVal);
+
+            const accountId = accountSelect.value;
+            if (accountId) {
+                loadCharts(accountId);
+                loadDailyGain(accountId);
+            }
+        }
     }
 
     // ========== Login ==========
@@ -140,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             displayAccountOverview(selectedAccount);
             accountOverview.style.display = 'grid';
             tabsSection.style.display = 'block';
+            document.getElementById('date-range-section').style.display = 'block';
 
             // Load tab data
             loadCharts(accountId);
@@ -264,19 +310,14 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '<tr><td colspan="3" class="no-data"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</td></tr>';
 
         try {
-            // Get last 30 days
-            const end = new Date();
-            const start = new Date();
-            start.setDate(start.getDate() - 30);
-
-            const startStr = formatDateAPI(start);
-            const endStr = formatDateAPI(end);
+            const startStr = formatDateAPI(currentDateStart);
+            const endStr = formatDateAPI(currentDateEnd);
 
             const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
 
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
                 // เรียงจากเก่า -> ใหม่ ก่อนคำนวณสะสม (ลำดับเวลาถูกต้อง)
-                const gainsAsc = result.dailyGain.slice(-30);
+                const gainsAsc = result.dailyGain;
                 let cumulativeGain = 0;
 
                 // คำนวณ cumulative จากเก่าไปใหม่ก่อน
@@ -314,18 +355,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== Load Charts ==========
     async function loadCharts(accountId) {
         try {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(start.getDate() - 30);
-
-            const startStr = formatDateAPI(start);
-            const endStr = formatDateAPI(end);
+            const startStr = formatDateAPI(currentDateStart);
+            const endStr = formatDateAPI(currentDateEnd);
 
             const result = await MyfxbookAPI.getDailyGain(accountId, startStr, endStr);
 
             if (result.error === false && result.dailyGain && result.dailyGain.length > 0) {
                 // เรียงจากเก่า -> ใหม่ (ลำดับเวลาถูกต้องสำหรับกราฟ)
-                const gains = result.dailyGain.slice(-30);
+                const gains = result.dailyGain;
                 const labels = gains.map(d => {
                     if (!d.date) return '';
                     // แสดงวันที่แบบ DD/MM

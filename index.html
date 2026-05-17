@@ -116,6 +116,27 @@
             </div>
         </div>
 
+        <!-- Date Range Picker -->
+        <div id="date-range-section" class="date-range-container" style="display: none;">
+            <div class="date-range-inner">
+                <label><i class="fas fa-calendar"></i> ช่วงวันที่:</label>
+                <input type="date" id="date-start">
+                <span class="date-separator">ถึง</span>
+                <input type="date" id="date-end">
+                <button id="btn-apply-date" class="btn-apply-date">
+                    <i class="fas fa-search"></i> ดูข้อมูล
+                </button>
+                <div class="date-presets">
+                    <button class="preset-btn" data-days="7">7 วัน</button>
+                    <button class="preset-btn" data-days="14">14 วัน</button>
+                    <button class="preset-btn active" data-days="30">30 วัน</button>
+                    <button class="preset-btn" data-days="90">90 วัน</button>
+                    <button class="preset-btn" data-days="180">180 วัน</button>
+                    <button class="preset-btn" data-days="365">1 ปี</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Tabs -->
         <div id="tabs-section" class="tabs-container" style="display: none;">
             <div class="tabs">

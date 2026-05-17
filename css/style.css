@@ -426,6 +426,87 @@ body {
     font-size: 12px;
 }
 
+/* ========== Date Range ========== */
+.date-range-container {
+    padding: 15px 30px;
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-light);
+}
+
+.date-range-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.date-range-inner label {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.date-range-inner input[type="date"] {
+    padding: 8px 12px;
+    border: 2px solid var(--gray-light);
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+}
+
+.date-range-inner input[type="date"]:focus {
+    border-color: var(--primary);
+}
+
+.date-separator {
+    font-size: 13px;
+    color: var(--gray);
+}
+
+.btn-apply-date {
+    padding: 8px 16px;
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-apply-date:hover {
+    background: var(--primary-dark);
+}
+
+.date-presets {
+    display: flex;
+    gap: 6px;
+    margin-left: 10px;
+}
+
+.preset-btn {
+    padding: 6px 12px;
+    background: var(--gray-light);
+    color: var(--dark-light);
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.preset-btn:hover {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.preset-btn.active {
+    background: var(--primary);
+    color: var(--white);
+}
+
 /* ========== Charts ========== */
 .charts-grid {
     display: grid;
@@ -497,6 +578,21 @@ body {
 
     .charts-grid {
         grid-template-columns: 1fr;
+    }
+
+    .date-range-container {
+        padding: 12px 15px;
+    }
+
+    .date-range-inner {
+        gap: 8px;
+    }
+
+    .date-presets {
+        margin-left: 0;
+        margin-top: 8px;
+        width: 100%;
+        flex-wrap: wrap;
     }
 
     .card {
