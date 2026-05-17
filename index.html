@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebFX - Myfxbook Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Login Section -->
+    <div id="login-section" class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fas fa-chart-line logo-icon"></i>
+                <h1>WebFX</h1>
+                <p>เชื่อมต่อบัญชี Myfxbook ของคุณ</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="email"><i class="fas fa-envelope"></i> อีเมล</label>
+                    <input type="email" id="email" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="password"><i class="fas fa-lock"></i> รหัสผ่าน</label>
+                    <input type="password" id="password" placeholder="รหัสผ่าน Myfxbook" required>
+                </div>
+                <button type="submit" class="btn-login">
+                    <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
+                </button>
+                <div id="login-error" class="error-message"></div>
+            </form>
+            <div class="login-footer">
+                <p><i class="fas fa-shield-alt"></i> ข้อมูลถูกส่งตรงไปยัง Myfxbook API อย่างปลอดภัย</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboard-section" class="dashboard-container" style="display: none;">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-left">
+                <i class="fas fa-chart-line logo-icon-sm"></i>
+                <h1>WebFX Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <span id="user-email" class="user-info"></span>
+                <button id="btn-logout" class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+                </button>
+            </div>
+        </header>
+
+        <!-- Account Selector -->
+        <div class="account-selector">
+            <label for="account-select"><i class="fas fa-wallet"></i> เลือกบัญชี:</label>
+            <select id="account-select">
+                <option value="">-- เลือกบัญชี --</option>
+            </select>
+            <button id="btn-refresh" class="btn-refresh" title="รีเฟรชข้อมูล">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>กำลังโหลดข้อมูล...</p>
+        </div>
+
+        <!-- Account Overview Cards -->
+        <div id="account-overview" class="overview-cards" style="display: none;">
+            <div class="card card-balance">
+                <div class="card-icon"><i class="fas fa-wallet"></i></div>
+                <div class="card-content">
+                    <h3>ยอดเงินคงเหลือ</h3>
+                    <p id="balance" class="card-value">$0.00</p>
+                </div>
+            </div>
+            <div class="card card-equity">
+                <div class="card-icon"><i class="fas fa-balance-scale"></i></div>
+                <div class="card-content">
+                    <h3>Equity</h3>
+                    <p id="equity" class="card-value">$0.00</p>
+                </div>
+            </div>
+            <div class="card card-profit">
+                <div class="card-icon"><i class="fas fa-chart-bar"></i></div>
+                <div class="card-content">
+                    <h3>กำไร/ขาดทุน</h3>
+                    <p id="profit" class="card-value">$0.00</p>
+                </div>
+            </div>
+            <div class="card card-gain">
+                <div class="card-icon"><i class="fas fa-percentage"></i></div>
+                <div class="card-content">
+                    <h3>Gain</h3>
+                    <p id="gain" class="card-value">0.00%</p>
+                </div>
+            </div>
+            <div class="card card-drawdown">
+                <div class="card-icon"><i class="fas fa-arrow-down"></i></div>
+                <div class="card-content">
+                    <h3>Drawdown</h3>
+                    <p id="drawdown" class="card-value">0.00%</p>
+                </div>
+            </div>
+            <div class="card card-trades">
+                <div class="card-icon"><i class="fas fa-exchange-alt"></i></div>
+                <div class="card-content">
+                    <h3>จำนวน Trades</h3>
+                    <p id="trades-count" class="card-value">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div id="tabs-section" class="tabs-container" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="open-trades">
+                    <i class="fas fa-play-circle"></i> Open Trades
+                </button>
+                <button class="tab-btn" data-tab="history">
+                    <i class="fas fa-history"></i> ประวัติการเทรด
+                </button>
+                <button class="tab-btn" data-tab="daily-gain">
+                    <i class="fas fa-calendar-alt"></i> กำไรรายวัน
+                </button>
+            </div>
+
+            <!-- Open Trades Tab -->
+            <div id="open-trades" class="tab-content active">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>คู่เงิน</th>
+                                <th>ประเภท</th>
+                                <th>Lots</th>
+                                <th>ราคาเปิด</th>
+                                <th>ราคาปัจจุบัน</th>
+                                <th>กำไร/ขาดทุน</th>
+                                <th>Pips</th>
+                                <th>เวลาเปิด</th>
+                            </tr>
+                        </thead>
+                        <tbody id="open-trades-body">
+                            <tr><td colspan="8" class="no-data">ไม่มี Open Trades</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history" class="tab-content">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>คู่เงิน</th>
+                                <th>ประเภท</th>
+                                <th>Lots</th>
+                                <th>ราคาเปิด</th>
+                                <th>ราคาปิด</th>
+                                <th>กำไร/ขาดทุน</th>
+                                <th>Pips</th>
+                                <th>เวลาเปิด</th>
+                                <th>เวลาปิด</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body">
+                            <tr><td colspan="9" class="no-data">ไม่มีข้อมูลประวัติ</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Daily Gain Tab -->
+            <div id="daily-gain" class="tab-content">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>วันที่</th>
+                                <th>กำไร/ขาดทุน (%)</th>
+                                <th>กำไรสะสม (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daily-gain-body">
+                            <tr><td colspan="3" class="no-data">ไม่มีข้อมูลกำไรรายวัน</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
