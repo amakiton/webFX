@@ -108,16 +108,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await MyfxbookAPI.getMyAccounts();
-            console.log('get-my-accounts response:', result);
+            console.log('get-my-accounts response:', JSON.stringify(result).substring(0, 500));
 
             if (result.error === false && result.accounts) {
                 accounts = result.accounts;
-                // Render cards immediately (don't wait for history)
+                // Load history for all accounts first, then render with win rates
+                grid.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> กำลังคำนวณ Win Rate...</div>';
+                await loadAllHistories();
                 renderAccountCards();
-                // Load history in background for win rate
-                loadAllHistories().then(() => {
-                    renderAccountCards();
-                });
             } else {
                 if (result.message && result.message.toLowerCase().includes('session')) {
                     handleLogout();
@@ -132,11 +130,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadAllHistories() {
-        const promises = accounts.map(async (acc) => {
+        // Load sequentially to avoid Myfxbook rate limit
+        for (const acc of accounts) {
             const id = String(acc.id);
             try {
                 const result = await MyfxbookAPI.getHistory(id);
-                console.log(`History for account ${id}:`, result);
+                console.log(`History for ${acc.name} (${id}): ${result.error === false ? (result.history ? result.history.length + ' trades' : 'no history key') : result.message}`);
                 if (result.error === false && result.history) {
                     historyCache[id] = result.history;
                 } else {
@@ -146,21 +145,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error(`Failed to load history for ${id}:`, e);
                 historyCache[id] = [];
             }
-        });
-        await Promise.all(promises);
+        }
     }
 
     function calcWinRate(accountId) {
         const key = String(accountId);
-        // Check if history has been loaded (key exists in cache)
-        if (!(key in historyCache)) return 'loading';
+        if (!(key in historyCache)) return 'N/A';
         const history = historyCache[key];
         if (!history || history.length === 0) return 'N/A';
-        // Filter only closed trades (trades that have a closeTime)
-        const closedTrades = history.filter(t => t.closeTime);
-        if (closedTrades.length === 0) return 'N/A';
-        const wins = closedTrades.filter(t => parseFloat(t.profit) > 0).length;
-        return ((wins / closedTrades.length) * 100).toFixed(1);
+        // Count all trades in history (they are all closed trades from get-history endpoint)
+        const wins = history.filter(t => parseFloat(t.profit) > 0).length;
+        return ((wins / history.length) * 100).toFixed(1);
     }
 
     function renderAccountCards() {
@@ -210,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="account-stat">
                             <span class="stat-label">Win Rate</span>
-                            <span class="stat-value">${winRate === 'loading' ? '<i class="fas fa-spinner fa-spin"></i>' : (winRate === 'N/A' ? 'N/A' : winRate + '%')}</span>
+                            <span class="stat-value">${winRate === 'N/A' ? 'N/A' : winRate + '%'}</span>
                         </div>
                     </div>
                     <div class="account-card-footer">
