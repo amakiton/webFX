@@ -159,11 +159,11 @@ function getTrades(filters = {}) {
         params.symbol = filters.symbol;
     }
     if (filters.start_date) {
-        sql += ' AND (close_time >= @start_date OR (status = "open" AND open_time >= @start_date))';
+        sql += " AND (REPLACE(close_time, '.', '-') >= @start_date OR (status = 'open' AND REPLACE(open_time, '.', '-') >= @start_date))";
         params.start_date = filters.start_date;
     }
     if (filters.end_date) {
-        sql += ' AND (close_time <= @end_date OR (status = "open" AND open_time <= @end_date))';
+        sql += " AND (REPLACE(close_time, '.', '-') <= @end_date OR (status = 'open' AND REPLACE(open_time, '.', '-') <= @end_date))";
         params.end_date = filters.end_date;
     }
 
@@ -222,11 +222,11 @@ function getStats(filters = {}) {
         params.symbol = filters.symbol;
     }
     if (filters.start_date) {
-        whereClause += ' AND close_time >= @start_date';
+        whereClause += " AND REPLACE(close_time, '.', '-') >= @start_date";
         params.start_date = filters.start_date;
     }
     if (filters.end_date) {
-        whereClause += ' AND close_time <= @end_date';
+        whereClause += " AND REPLACE(close_time, '.', '-') <= @end_date";
         params.end_date = filters.end_date;
     }
 
@@ -301,11 +301,11 @@ function getStatsAllComments(filters = {}) {
         params.account_id = filters.account_id;
     }
     if (filters.start_date) {
-        whereClause += ' AND close_time >= @start_date';
+        whereClause += " AND REPLACE(close_time, '.', '-') >= @start_date";
         params.start_date = filters.start_date;
     }
     if (filters.end_date) {
-        whereClause += ' AND close_time <= @end_date';
+        whereClause += " AND REPLACE(close_time, '.', '-') <= @end_date";
         params.end_date = filters.end_date;
     }
 

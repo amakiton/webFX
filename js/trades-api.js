@@ -4,9 +4,7 @@
  */
 
 const TradesAPI = {
-    BASE_URL: window.location.origin.includes('localhost') 
-        ? 'http://localhost:3000' 
-        : 'http://74.222.26.45:3000',
+    BASE_URL: '',
 
     // ========== Trades ==========
 
